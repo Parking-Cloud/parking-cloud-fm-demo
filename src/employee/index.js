@@ -140,7 +140,9 @@ global.PC.Sezioni.dipendenteView = {
           return `<div class="my-booking-card"${UI.act('emp-apri-giorno', { giornoIso: p.data })}>
             <div><div class="mbc-date">${d.getDate()}</div><div class="mbc-month">${U.MONTHS_SHORT[d.getMonth()]}</div></div>
             <div class="mbc-info">
-              <div class="mbc-spot">${p.tipo === 'ufficio' ? 'Stallo ' + UI.esc(p.stalloId) : 'Smart Working 🏠'}</div>
+              <div class="mbc-spot">${p.tipo === 'ufficio'
+                ? 'Stallo ' + UI.esc(p.stalloId) + (p.turnoId && S.turno(p.turnoId) ? ' · ' + UI.esc(S.turno(p.turnoId).label) : '')
+                : 'Smart Working 🏠'}</div>
               <div class="mbc-meta">${U.DAYS_FULL_IT[d.getDay()]} · ${p.tipo === 'ufficio' ? UI.esc((S.stallo(p.stalloId) || {}).piano || '') + ' · check-in via app' : 'nessuno stallo necessario'}</div>
             </div>
             <div class="mbc-actions">
@@ -258,7 +260,11 @@ function cardGiorno(g, dip) {
 
   let cls = 'emp-day', stato = '', statoCls = '', spot = '';
   if (passato)                    { cls += ' day-past'; stato = 'Passato'; statoCls = 'past'; }
-  else if (pre && pre.tipo === 'ufficio') { cls += ' day-booked'; stato = '✓ Prenotato'; statoCls = 'ok'; spot = pre.stalloId; }
+  else if (pre && pre.tipo === 'ufficio') {
+    cls += ' day-booked'; stato = '✓ Prenotato'; statoCls = 'ok';
+    const t = pre.turnoId ? S.turno(pre.turnoId) : null;
+    spot = pre.stalloId + (t ? ' · ' + t.label : '');
+  }
   else if (pre && pre.tipo === 'sw')      { cls += ' day-sw'; stato = '🏠 Smart W.'; statoCls = 'sw'; }
   else if (fuoriFinestra)         { cls += ' day-past'; stato = 'Non prenotabile'; statoCls = 'past'; }
   else                            { cls += ' day-todo'; stato = '+ Prenota'; statoCls = 'free'; }
@@ -309,6 +315,10 @@ UI.on('emp-apri-giorno', d => {
 UI.on('emp-apri-cancella', d => Modals.open('emp-cancel', { giornoISO: d.giornoIso }));
 UI.on('emp-sel-tipo', d => { Modals._collect(); Modals.form.tipo = d.valore; Modals._render(); });
 
+/* selezione del turno: stesso schema di emp-sel-tipo, il re-render ricalcola
+   lo stallo assegnato perche' la disponibilita' dipende dal turno */
+UI.on('emp-sel-turno', d => { Modals._collect(); Modals.form.turnoId = d.turnoId; Modals._render(); });
+
 UI.on('emp-cambia-stallo', d => {
   const dip = S.dipendenteCorrente();
   if (!dip) return;
@@ -329,14 +339,19 @@ UI.on('emp-conferma', d => {
   if (!dip) { UI.toast('Sessione non valida'); return; }
   const tipo = Modals.form.tipo || 'ufficio';
   const stallo = Modals.form.stallo;
-  const r = A.prenota({ dipendenteId: dip.id, dataISO: d.giornoIso, tipo, stalloId: tipo === 'ufficio' ? stallo : null });
+  const perTurni = State.config.modalitaPrenotazione === 'turni';
+  const turnoId = perTurni && tipo === 'ufficio' ? (Modals.form.turnoId || null) : null;
+  if (perTurni && tipo === 'ufficio' && !turnoId) { UI.toast('Seleziona il turno'); return; }
+  const r = A.prenota({ dipendenteId: dip.id, dataISO: d.giornoIso, tipo,
+    stalloId: tipo === 'ufficio' ? stallo : null, turnoId });
   if (r.errore) { UI.toast('⚠ ' + r.errore); return; }
   Modals.close();
   const quando = U.fmtShort(U.fromISO(d.giornoIso));
   const emailMsg = `· Email di conferma inviata a ${dip.email}`;
+  const t = turnoId ? S.turno(turnoId) : null;
   UI.toast(tipo === 'sw'
     ? `🏠 Smart Working dichiarato per ${quando} · stallo liberato ${emailMsg}`
-    : `✓ Stallo ${r.stalloId} prenotato per ${quando} ${emailMsg}`);
+    : `✓ Stallo ${r.stalloId}${t ? ' · ' + t.label : ''} prenotato per ${quando} ${emailMsg}`);
 });
 
 UI.on('emp-cancella', d => {

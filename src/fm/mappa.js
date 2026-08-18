@@ -6,7 +6,7 @@
 ============================================================================ */
 (function (global) {
 'use strict';
-const { UI, Selectors: S, Actions: A, State, Modals, Domini: D } = global.PC;
+const { UI, Selectors: S, Actions: A, State, Modals, Utils: U, Domini: D } = global.PC;
 
 /* la legenda riusa le stesse classi dei tile, così resta allineata al brand */
 const LEGENDA = [
@@ -22,7 +22,27 @@ global.PC.Sezioni.mappa = {
     const st = S.kpiStalli();
     const sel = State.ui.mapSelection;
 
-    const kpi = UI.kpiGrid([
+    const perTurni = State.config.modalitaPrenotazione === 'turni';
+    const turnoSel = perTurni ? S.turnoAttivoMappa() : null;
+    const kTurno   = perTurni && turnoSel
+      ? S.kpiPerTurno(U.OGGI_ISO).find(k => k.turnoId === turnoSel.id) : null;
+
+    /* Selettore orizzontale dei turni: non appare in modalita' giornaliera. */
+    const selettoreTurni = perTurni ? `
+      <div class="turni-tabs">
+        ${(State.config.turni || []).map(t => `<div class="turno-tab${turnoSel && t.id === turnoSel.id ? ' active' : ''}"${UI.act('mappa-turno', { turnoId: t.id })}>
+          <span class="turno-tab-lbl">${UI.esc(t.label)}</span>
+          <span class="turno-tab-ora">${UI.esc(t.inizio.slice(0, 2))}–${UI.esc(t.fine.slice(0, 2))}</span>
+        </div>`).join('')}
+      </div>` : '';
+
+    const kpi = UI.kpiGrid(perTurni && kTurno ? [
+      UI.kpi({ label: 'Liberi turno ' + kTurno.label, val: kTurno.liberi + '/' + kTurno.totale, colore: 'green' }),
+      UI.kpi({ label: 'Occupati turno',  val: kTurno.occupati, sub: kTurno.perc + '% occupato', colore: 'red' }),
+      UI.kpi({ label: 'Prenotati turno', val: kTurno.prenotati, colore: 'blue' }),
+      UI.kpi({ label: 'EV ⚡',        val: st.ev,           colore: 'cyan' }),
+      UI.kpi({ label: '♿ Disabili',   val: st.disabili,     colore: 'purple' })
+    ] : [
       UI.kpi({ label: 'Posti Totali', val: st.totale,       colore: 'blue' }),
       UI.kpi({ label: 'Liberi',       val: st.liberi,       sub: st.percDisponibilita + '% disponibile', colore: 'green' }),
       UI.kpi({ label: 'Occupati',     val: st.occupati,     sub: st.percOccupazione + '% occupato', colore: 'red' }),
@@ -33,7 +53,9 @@ global.PC.Sezioni.mappa = {
     const barraLegenda = `
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px">
         <div class="map-legend">
-          ${LEGENDA.map(([l, cls]) => `<span class="leg"><span class="leg-sq ${cls}"></span>${l}</span>`).join('')}
+          ${LEGENDA.concat(State.config.modalitaPrenotazione === 'turni'
+              ? [['Cambio turno', 'ms-cambio']] : [])
+            .map(([l, cls]) => `<span class="leg"><span class="leg-sq ${cls}"></span>${l}</span>`).join('')}
         </div>
         ${UI.btn('🅿️ + Aggiungi Stallo', { azione: 'apri-modale', params: { modale: 'add-stallo' }, variante: 'btn-primary' })}
       </div>`;
@@ -57,20 +79,28 @@ global.PC.Sezioni.mappa = {
       const liberi = stalli.filter(s => S.statoStallo(s.id).stato === 'libero').length;
       return `<div class="zone-lbl">${UI.esc(z.nome)} <span class="zone-count">${stalli.length - liberi}/${stalli.length}</span></div>
         <div class="map-row">${stalli.map(s => {
-          const stato = S.statoStallo(s.id);
+          const stato = S.statoStallo(s.id, U.OGGI_ISO, turnoSel ? turnoSel.id : undefined);
           const icona = D.TIPO_STALLO[s.tipo].icona;
-          const titolo = `${s.codice} · ${stato.label}${stato.occupanteNome ? ' · ' + stato.occupanteNome : ''}`;
-          return `<div class="mspot ${stato.cls}${State.ui.mapSelection.includes(s.id) ? ' selected' : ''}"${UI.act('click-stallo', { stalloId: s.id })} title="${UI.esc(titolo)}">${icona}${UI.esc(s.codice)}</div>`;
+          /* Giallo = passaggio di consegne in corso: si e' dentro la finestra
+             di tolleranza E lo stallo e' prenotato nei due turni a cavallo. */
+          const inCambio = perTurni && S.cambioTurnoInCorso(s.id, U.OGGI_ISO);
+          const cls = inCambio ? 'ms-cambio' : stato.cls;
+          const titolo = inCambio
+            ? `${s.codice} · cambio turno in corso (±${State.config.tolleranzaCambioTurnoMin} min)`
+            : `${s.codice} · ${stato.label}${stato.occupanteNome ? ' · ' + stato.occupanteNome : ''}`;
+          return `<div class="mspot ${cls}${State.ui.mapSelection.includes(s.id) ? ' selected' : ''}"${UI.act('click-stallo', { stalloId: s.id })} title="${UI.esc(titolo)}">${icona}${UI.esc(s.codice)}</div>`;
         }).join('')}</div>`;
     }).join('');
 
-    return kpi + barraLegenda + barraSel
+    return kpi + selettoreTurni + barraLegenda + barraSel
       + '<div class="map-hint">💡 Click = dettaglio &amp; modifica stallo · Ctrl+Click (o ⌘+Click) = selezione multipla</div>'
       + `<div class="pmap">${mappa}</div>`;
   }
 };
 
 /* ---- handler ---------------------------------------------------------- */
+UI.on('mappa-turno', d => A.setMappaTurno(d.turnoId));
+
 UI.on('click-stallo', (d, ev) => {
   if (ev.ctrlKey || ev.metaKey) { A.toggleSelezioneStallo(d.stalloId); return; }
   Modals.open('stallo-det', { stalloId: d.stalloId });

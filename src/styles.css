@@ -727,3 +727,71 @@ input[type=range]{accent-color:var(--blue)}
 .emp-code-val{font-family:var(--font-mono);font-size:22px;font-weight:700;
   letter-spacing:.16em;color:var(--green-text)}
 .emp-code-note{font-size:11px;color:var(--green-text);opacity:.85}
+
+/* ---- Modalita' a turni (CODE-17B) ---- */
+.modalita-toggle{display:flex;gap:8px;flex-wrap:wrap}
+.modalita-opt{
+  flex:1;min-width:150px;padding:11px 14px;border:1.5px solid var(--border);
+  border-radius:var(--r);cursor:pointer;transition:.15s;background:var(--bg-card)}
+.modalita-opt:hover{border-color:var(--blue)}
+.modalita-opt.active{border-color:var(--blue);background:var(--blue-light)}
+.modalita-lbl{font-size:13px;font-weight:700;color:var(--text)}
+.modalita-opt.active .modalita-lbl{color:var(--blue)}
+.modalita-sub{font-size:11px;color:var(--text-muted);margin-top:2px}
+
+.turni-list{display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
+.turno-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.turno-row .turno-lbl{flex:1;min-width:120px}
+.turno-row .turno-ora{width:118px;flex:0 0 auto}
+.turno-sep{color:var(--text-muted);font-size:12px}
+
+.turni-tabs{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+.turno-tab{
+  padding:7px 14px;border:1.5px solid var(--border);border-radius:999px;
+  cursor:pointer;transition:.15s;background:var(--bg-card);display:flex;
+  align-items:baseline;gap:7px}
+.turno-tab:hover{border-color:var(--blue)}
+.turno-tab.active{background:var(--blue);border-color:var(--blue)}
+.turno-tab-lbl{font-size:12px;font-weight:700;color:var(--text)}
+.turno-tab.active .turno-tab-lbl{color:#FFFFFF}
+.turno-tab-ora{font-family:var(--font-mono);font-size:10px;color:var(--text-muted)}
+.turno-tab.active .turno-tab-ora{color:rgba(255,255,255,.85)}
+
+.turno-attivo-lbl{font-size:11px;color:var(--blue);font-weight:700;margin-top:3px}
+
+/* tile mappa in cambio consegne */
+.ms-cambio{background:var(--amber-bg)!important;color:var(--amber-text)!important;
+  border-color:var(--amber)!important}
+.leg-sq.ms-cambio{background:var(--amber-bg);border:1px solid var(--amber)}
+
+/* celle della griglia FM per turno */
+.bk-slot.s-turno{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:1px;line-height:1.15;color:#FFFFFF}
+.bk-slot .bk-stallo{font-family:var(--font-mono);font-size:10px;font-weight:700}
+.bk-slot .bk-turno{font-size:9px;opacity:.9}
+.bk-slot.t-mattino{background:#1546D4}
+.bk-slot.t-pomeriggio{background:#0F7B4F}
+.bk-slot.t-notte{background:#5B3FA8}
+.bk-slot.t-altro{background:var(--text-muted)}
+
+/* card di scelta turno nel modale dipendente */
+.turni-cards{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.turno-card{
+  flex:1;min-width:150px;padding:12px 14px;border:1.5px solid var(--border);
+  border-radius:var(--r);cursor:pointer;transition:.15s;background:var(--bg-card)}
+.turno-card:hover{border-color:var(--blue)}
+.turno-card.active{border-color:var(--blue);background:var(--blue-light)}
+.turno-card.pieno{opacity:.55;cursor:not-allowed}
+.turno-card.pieno:hover{border-color:var(--border)}
+.turno-card-hd{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.turno-card-lbl{font-size:13px;font-weight:700;color:var(--text)}
+.turno-card-ora{font-size:11px;color:var(--text-muted);margin-top:4px}
+.turno-card-posti{font-size:11px;color:var(--text-muted);margin-top:2px}
+
+/* toggle scenario demo in Amministrazione */
+.scenario-box{margin-top:14px;padding:12px 14px;background:var(--bg-raised);
+  border:1px solid var(--border);border-radius:var(--r)}
+.scenario-lbl{font-size:11px;font-weight:800;text-transform:uppercase;
+  letter-spacing:.08em;color:var(--text-muted);margin-bottom:8px}
+.scenario-toggle .modalita-opt{min-width:120px;padding:9px 12px;text-align:center}
+.scenario-nota{font-size:11px;color:var(--text-muted);margin-top:9px;line-height:1.6}

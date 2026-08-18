@@ -109,6 +109,46 @@ function tabParcheggio() {
 /* ── TAB 2 · POLICY ─────────────────────────────────────────────────────── */
 function tabPolicy() {
   const p = State.config.prenotazioni;
+  const turni = State.config.turni || [];
+  const perTurni = State.config.modalitaPrenotazione === 'turni';
+
+  /* In 'giornaliera' si vede SOLO il toggle: nessuna opzione dei turni,
+     come da specifica. La sezione e' in cima perche' decide il senso di
+     tutte le altre. */
+  const cardModalita = UI.card({
+    titolo: '\u{1F504} Modalit\u00e0 Prenotazione',
+    stile: 'margin-bottom:14px',
+    body: `
+      <div class="modalita-toggle">
+        ${[['giornaliera', 'Giornaliera', 'Uno stallo per persona, tutto il giorno'],
+           ['turni', 'Per turni', 'Lo stesso stallo servito da pi\u00f9 turni']]
+          .map(([v, l, sub]) => `<div class="modalita-opt${State.config.modalitaPrenotazione === v ? ' active' : ''}"${UI.act('set-modalita', { modalita: v })}>
+             <div class="modalita-lbl">${l}</div>
+             <div class="modalita-sub">${sub}</div>
+           </div>`).join('')}
+      </div>
+      ${perTurni ? `
+        <div class="sep"></div>
+        <div class="form-label" style="margin-bottom:8px">Turni configurati</div>
+        <div class="turni-list">
+          ${turni.map(t => `<div class="turno-row" data-turno="${UI.esc(t.id)}">
+            <input class="form-input turno-lbl" value="${UI.esc(t.label)}" data-act="turno-label" data-turno-id="${UI.esc(t.id)}" data-focus-key="tl-${UI.esc(t.id)}">
+            <input class="form-input turno-ora" type="time" value="${UI.esc(t.inizio)}" data-act="turno-inizio" data-turno-id="${UI.esc(t.id)}">
+            <span class="turno-sep">\u2192</span>
+            <input class="form-input turno-ora" type="time" value="${UI.esc(t.fine)}" data-act="turno-fine" data-turno-id="${UI.esc(t.id)}">
+            ${UI.btn('\u2715', { azione: 'rimuovi-turno', params: { turnoId: t.id }, titolo: 'Rimuovi turno' })}
+          </div>`).join('')}
+        </div>
+        ${UI.btn('+ Aggiungi turno', { azione: 'aggiungi-turno' })}
+        <div class="sep"></div>
+        ${UI.setting('Tolleranza cambio turno',
+          `\u00b1${State.config.tolleranzaCambioTurnoMin} min di sovrapposizione consentita tra turni consecutivi`,
+          `<div style="display:flex;align-items:center;gap:8px">
+            <input type="range" min="0" max="60" step="5" value="${State.config.tolleranzaCambioTurnoMin}" style="width:110px" data-act="slider-tolleranza">
+            <span class="mono" style="font-size:11px;color:var(--blue);min-width:44px">\u00b1${State.config.tolleranzaCambioTurnoMin} min</span>
+          </div>`)}
+      ` : ''}`
+  });
 
   const cardPrenotazioni = UI.card({
     titolo: '⏰ Prenotazioni',
@@ -164,7 +204,7 @@ function tabPolicy() {
     ].join('')
   });
 
-  return `<div class="g2"><div>${cardPrenotazioni}${cardEv}</div><div>${cardSw}${cardViolazioni}</div></div>`;
+  return cardModalita + `<div class="g2"><div>${cardPrenotazioni}${cardEv}</div><div>${cardSw}${cardViolazioni}</div></div>`;
 }
 
 /* ── TAB 3 · NOTIFICHE ──────────────────────────────────────────────────── */
@@ -282,6 +322,25 @@ UI.on('rimuovi-email-notifica', d => {
 });
 
 UI.onInput('slider-settimane', (d, ev) => A.setPolicy({ finestraGiorniLavorativi: parseInt(ev.target.value, 10) }));
+
+/* ---- modalita' a turni ---- */
+UI.on('set-modalita', d => {
+  A.setModalitaPrenotazione(d.modalita);
+  UI.toast(d.modalita === 'turni'
+    ? '\u{1F504} Modalit\u00e0 a turni attiva \u00b7 mappa e prenotazioni ora ragionano per turno'
+    : '\u{1F504} Modalit\u00e0 giornaliera ripristinata');
+});
+UI.onInput('turno-label',  (d, ev) => A.aggiornaTurno(d.turnoId, { label: ev.target.value }));
+UI.onChange('turno-inizio', (d, ev) => A.aggiornaTurno(d.turnoId, { inizio: ev.target.value }));
+UI.onChange('turno-fine',   (d, ev) => A.aggiornaTurno(d.turnoId, { fine: ev.target.value }));
+UI.on('aggiungi-turno', () => A.aggiungiTurno());
+UI.on('rimuovi-turno', d => {
+  if ((State.config.turni || []).length <= 1) { UI.toast('Deve restare almeno un turno'); return; }
+  const t = S.turno(d.turnoId);
+  A.rimuoviTurno(d.turnoId);
+  UI.toast(`Turno ${t ? t.label : ''} rimosso`);
+});
+UI.onInput('slider-tolleranza', (d, ev) => A.setTolleranzaCambioTurno(parseInt(ev.target.value, 10)));
 UI.onChange('cfg-noshow',       (d, ev) => A.setPolicy({ noShowMinuti: parseInt(ev.target.value, 10) || 30 }));
 UI.onChange('cfg-durata',       (d, ev) => A.setPolicy({ durataMaxDipendenteOre: parseInt(ev.target.value, 10) || 10 }));
 UI.onChange('cfg-durata-ev',    (d, ev) => A.setPolicy({ durataMaxEvOre: parseInt(ev.target.value, 10) || 4 }));

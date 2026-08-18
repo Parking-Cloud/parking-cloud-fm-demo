@@ -27,6 +27,9 @@ global.PC.Sezioni.dashboard = {
         <div class="card-hd">
           <div class="card-title">🗺 Occupazione per Zona
             <small style="font-weight:400;font-size:11px;color:var(--text-muted);margin-left:6px">Real-time · aggiornato ${new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}</small>
+            ${State.config.modalitaPrenotazione === 'turni' && S.turnoCorrente()
+              ? `<div class="turno-attivo-lbl">Turno attivo: <strong>${UI.esc(S.turnoCorrente().label)}</strong> · ${UI.esc(S.turnoCorrente().inizio)}–${UI.esc(S.turnoCorrente().fine)}</div>`
+              : ''}
           </div>
           ${UI.btn('Mappa completa →', { azione: 'nav', params: { sezione: 'mappa' } })}
         </div>

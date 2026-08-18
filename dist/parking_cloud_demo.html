@@ -736,6 +736,74 @@ input[type=range]{accent-color:var(--blue)}
   letter-spacing:.16em;color:var(--green-text)}
 .emp-code-note{font-size:11px;color:var(--green-text);opacity:.85}
 
+/* ---- Modalita' a turni (CODE-17B) ---- */
+.modalita-toggle{display:flex;gap:8px;flex-wrap:wrap}
+.modalita-opt{
+  flex:1;min-width:150px;padding:11px 14px;border:1.5px solid var(--border);
+  border-radius:var(--r);cursor:pointer;transition:.15s;background:var(--bg-card)}
+.modalita-opt:hover{border-color:var(--blue)}
+.modalita-opt.active{border-color:var(--blue);background:var(--blue-light)}
+.modalita-lbl{font-size:13px;font-weight:700;color:var(--text)}
+.modalita-opt.active .modalita-lbl{color:var(--blue)}
+.modalita-sub{font-size:11px;color:var(--text-muted);margin-top:2px}
+
+.turni-list{display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
+.turno-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.turno-row .turno-lbl{flex:1;min-width:120px}
+.turno-row .turno-ora{width:118px;flex:0 0 auto}
+.turno-sep{color:var(--text-muted);font-size:12px}
+
+.turni-tabs{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+.turno-tab{
+  padding:7px 14px;border:1.5px solid var(--border);border-radius:999px;
+  cursor:pointer;transition:.15s;background:var(--bg-card);display:flex;
+  align-items:baseline;gap:7px}
+.turno-tab:hover{border-color:var(--blue)}
+.turno-tab.active{background:var(--blue);border-color:var(--blue)}
+.turno-tab-lbl{font-size:12px;font-weight:700;color:var(--text)}
+.turno-tab.active .turno-tab-lbl{color:#FFFFFF}
+.turno-tab-ora{font-family:var(--font-mono);font-size:10px;color:var(--text-muted)}
+.turno-tab.active .turno-tab-ora{color:rgba(255,255,255,.85)}
+
+.turno-attivo-lbl{font-size:11px;color:var(--blue);font-weight:700;margin-top:3px}
+
+/* tile mappa in cambio consegne */
+.ms-cambio{background:var(--amber-bg)!important;color:var(--amber-text)!important;
+  border-color:var(--amber)!important}
+.leg-sq.ms-cambio{background:var(--amber-bg);border:1px solid var(--amber)}
+
+/* celle della griglia FM per turno */
+.bk-slot.s-turno{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:1px;line-height:1.15;color:#FFFFFF}
+.bk-slot .bk-stallo{font-family:var(--font-mono);font-size:10px;font-weight:700}
+.bk-slot .bk-turno{font-size:9px;opacity:.9}
+.bk-slot.t-mattino{background:#1546D4}
+.bk-slot.t-pomeriggio{background:#0F7B4F}
+.bk-slot.t-notte{background:#5B3FA8}
+.bk-slot.t-altro{background:var(--text-muted)}
+
+/* card di scelta turno nel modale dipendente */
+.turni-cards{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.turno-card{
+  flex:1;min-width:150px;padding:12px 14px;border:1.5px solid var(--border);
+  border-radius:var(--r);cursor:pointer;transition:.15s;background:var(--bg-card)}
+.turno-card:hover{border-color:var(--blue)}
+.turno-card.active{border-color:var(--blue);background:var(--blue-light)}
+.turno-card.pieno{opacity:.55;cursor:not-allowed}
+.turno-card.pieno:hover{border-color:var(--border)}
+.turno-card-hd{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.turno-card-lbl{font-size:13px;font-weight:700;color:var(--text)}
+.turno-card-ora{font-size:11px;color:var(--text-muted);margin-top:4px}
+.turno-card-posti{font-size:11px;color:var(--text-muted);margin-top:2px}
+
+/* toggle scenario demo in Amministrazione */
+.scenario-box{margin-top:14px;padding:12px 14px;background:var(--bg-raised);
+  border:1px solid var(--border);border-radius:var(--r)}
+.scenario-lbl{font-size:11px;font-weight:800;text-transform:uppercase;
+  letter-spacing:.08em;color:var(--text-muted);margin-bottom:8px}
+.scenario-toggle .modalita-opt{min-width:120px;padding:9px 12px;text-align:center}
+.scenario-nota{font-size:11px;color:var(--text-muted);margin-top:9px;line-height:1.6}
+
 </style>
 </head>
 <body>
@@ -1794,6 +1862,208 @@ function buildRichiestePass(dipendenti) {
 }
 
 /* ==========================================================================
+   2.9 SCENARIO OSPEDALE (CODE-17B)
+   Secondo set di dati demo, con modalita' a turni attiva. Serve a mostrare
+   la capacita' 3x: lo stesso stallo usato da tre persone diverse nella
+   stessa giornata, una per turno.
+========================================================================== */
+
+const SEDE_OSPEDALE = {
+  nome:      'Ospedale Demo — Area Sanitaria',
+  nomeBreve: 'Area Sanitaria',
+  descrizione: 'Ospedale Demo · Area Sanitaria',
+  dominioEmail: 'ospedaledemo.it',
+  helpdesk:  'helpdesk@parkingcloud.eu'
+};
+
+/* 5 medici + 10 infermieri + 5 staff = 20. Il primo e' l'account demo:
+   senza di lui non si potrebbe entrare come dipendente nello scenario. */
+const RUOLI_OSPEDALE = [
+  { ruolo: 'medico',     label: 'Medico',     quanti: 5,  reparto: 'Area Medica' },
+  { ruolo: 'infermiere', label: 'Infermiere', quanti: 10, reparto: 'Area Infermieristica' },
+  { ruolo: 'staff',      label: 'Staff',      quanti: 5,  reparto: 'Servizi Generali' }
+];
+
+function buildDipendentiOspedale(stalli) {
+  const out = [];
+  const assegnabili = stalli
+    .filter(s => ['A', 'B', 'C'].includes(s.zonaId) && s.tipo === 'standard')
+    .map(s => s.codice);
+  let k = 0;
+  RUOLI_OSPEDALE.forEach(r => {
+    for (let i = 0; i < r.quanti; i++) {
+      const f = rnd() < 0.6;
+      /* Su soli 20 nomi una collisione e' probabile, e due omonimi sullo
+         stallo vetrina renderebbero incomprensibile la demo della capacita' 3x.
+         Si estrae finche' il nome completo non e' nuovo. */
+      let nome, cognome, tentativi = 0;
+      do {
+        nome = f ? rPick(NOMI_F) : rPick(NOMI_M);
+        cognome = rPick(COGNOMI);
+        tentativi++;
+      } while (tentativi < 40 && out.some(d => d.nomeCompleto === nome + ' ' + cognome));
+      const primo = out.length === 0;
+      /* Stallo fisso solo ai medici: infermieri e staff ruotano sui turni,
+         ed e' proprio la rotazione che la demo deve mostrare. */
+      const stalloId = r.ruolo === 'medico' ? assegnabili[k++] : null;
+      out.push({
+        id: nextId('DIP'),
+        nome, cognome,
+        nomeCompleto: nome + ' ' + cognome,
+        iniziali: iniziali(nome, cognome),
+        email: primo ? 'dipendente@demo.parkingcloud.eu'
+                     : slug(nome)[0] + '.' + slug(cognome) + out.length + '@' + SEDE_OSPEDALE.dominioEmail,
+        dipartimento: r.reparto,
+        ruolo: r.ruolo,
+        ruoloLabel: r.label,
+        stalloId,
+        poolRotante: !stalloId,
+        caratteristica: 'standard',
+        metodoAccesso: 'app2n',
+        appAttiva: true,
+        stato: 'attivo',
+        bloccoMotivo: null, bloccoTipo: null, bloccoDal: null,
+        accessiMese: rInt(14, 22),
+        noShow: 0,
+        segnalazioniFatte: 0,
+        statoAccount: 'attivo',
+        puoRichiederePass: primo || r.ruolo === 'medico',
+        utenteDemo: primo,
+        inEvidenza: true
+      });
+    }
+  });
+  const byCode = new Map(stalli.map(s => [s.codice, s]));
+  out.forEach(d => { if (d.stalloId && byCode.has(d.stalloId)) byCode.get(d.stalloId).titolareId = d.id; });
+  return out;
+}
+
+/* Prenotazioni su tre turni. STALLO_VETRINA e' prenotato da tre persone
+   diverse nello stesso giorno: e' la dimostrazione della capacita' 3x. */
+const STALLO_VETRINA = 'A-07';
+
+function buildPrenotazioniOspedale(dipendenti, stalli, turni) {
+  const out = [];
+  const pool = stalli
+    .filter(s => s.tipo === 'standard' && s.codice !== STALLO_VETRINA)
+    .map(s => s.codice);
+  const giorni = [];
+  for (let i = -3; i <= 6; i++) {
+    const g = addDays(OGGI, i);
+    if (isLavorativo(g)) giorni.push(g);
+  }
+
+  giorni.forEach((giorno, gi) => {
+    const iso = toISO(giorno);
+    const passato = iso < OGGI_ISO;
+    let cursore = (gi * 7) % pool.length;
+
+    turni.forEach((t, ti) => {
+      /* i tre della vetrina: uno per turno, sempre sullo stesso stallo */
+      const vetrina = dipendenti[(gi + ti * 3) % dipendenti.length];
+      out.push({
+        id: nextId('PRE'), dipendenteId: vetrina.id, data: iso, tipo: 'ufficio',
+        stalloId: STALLO_VETRINA,
+        stato: passato ? 'completata' : 'attiva',
+        checkIn:  passato ? t.inizio : null,
+        checkOut: passato ? t.fine   : null,
+        creataDa: 'dipendente', turnoId: t.id
+      });
+
+      /* riempimento del turno: quota diversa per turno, cosi' i KPI per turno
+         non sono tutti uguali e la tabella capacita' dice qualcosa */
+      const quota = [9, 7, 4][ti] !== undefined ? [9, 7, 4][ti] : 5;
+      for (let n = 0; n < quota; n++) {
+        const dip = dipendenti[(gi * 3 + ti * 5 + n + 1) % dipendenti.length];
+        if (dip.id === vetrina.id) continue;
+        if (out.some(p => p.data === iso && p.turnoId === t.id && p.dipendenteId === dip.id)) continue;
+        const stalloId = (dip.stalloId && !out.some(p => p.data === iso && p.turnoId === t.id && p.stalloId === dip.stalloId))
+          ? dip.stalloId
+          : pool[cursore++ % pool.length];
+        if (out.some(p => p.data === iso && p.turnoId === t.id && p.stalloId === stalloId)) continue;
+        out.push({
+          id: nextId('PRE'), dipendenteId: dip.id, data: iso, tipo: 'ufficio',
+          stalloId,
+          stato: passato ? 'completata' : 'attiva',
+          checkIn:  passato ? t.inizio : null,
+          checkOut: passato ? t.fine   : null,
+          creataDa: 'dipendente', turnoId: t.id
+        });
+      }
+    });
+  });
+  return out;
+}
+
+/** Accessi coerenti col turno della prenotazione.
+    Riusare buildAccessi() qui non funziona: genera tutti gli ingressi in
+    fascia mattutina, e le tre persone dello stallo vetrina risulterebbero
+    dentro contemporaneamente. L'ingresso deve cadere nel proprio turno, e
+    l'accesso resta APERTO solo se quel turno e' quello in corso adesso. */
+function buildAccessiOspedale(prenotazioni, dipendenti, turni) {
+  const out = [];
+  const byId = new Map(dipendenti.map(d => [d.id, d]));
+  const adesso = S.turnoCorrente() || turni[0];
+  const oraOra = new Date().getHours() * 60 + new Date().getMinutes();
+
+  prenotazioni
+    .filter(p => p.data === OGGI_ISO && p.tipo === 'ufficio' && p.stalloId)
+    .forEach(p => {
+      const dip = byId.get(p.dipendenteId);
+      const t = turni.find(x => x.id === p.turnoId);
+      if (!dip || !t) return;
+      const inizio = S.minutiDa(t.inizio);
+      const fine   = S.minutiDa(t.fine);
+      const corrente = t.id === adesso.id;
+      /* turno non ancora iniziato: nessuno e' entrato */
+      const iniziato = corrente || (inizio <= fine ? oraOra >= fine : false);
+      if (!iniziato) return;
+      out.push({
+        id: nextId('ACC'),
+        data: OGGI_ISO,
+        tipo: 'dipendente',
+        personaId: dip.id,
+        personaNome: dip.nomeCompleto,
+        stalloId: p.stalloId,
+        ingresso: minutesToHHMM((inizio + rInt(2, 35)) % 1440),
+        uscita: corrente ? null : minutesToHHMM(fine),
+        metodo: (p.stalloId.startsWith('B')) ? 'pin' : (out.length % 2 === 0 ? 'app' : 'qr'),
+        stato: corrente ? 'dentro' : 'uscito',
+        anomalia: null,
+        targa: null,
+        prenotazioneId: p.id
+      });
+    });
+  return out;
+}
+
+function costruisciDatiOspedale() {
+  resetGeneratori();
+  const zone         = ZONE_SEED.map(z => Object.assign({}, z));
+  const stalli       = buildStalli(zone);
+  const dipendenti   = buildDipendentiOspedale(stalli);
+  const config       = buildConfig();
+  config.modalitaPrenotazione   = 'turni';
+  config.tolleranzaCambioTurnoMin = 30;
+  config.sede.nome        = SEDE_OSPEDALE.nome;
+  config.sede.nomeBreve   = SEDE_OSPEDALE.nomeBreve;
+  config.sede.descrizione = SEDE_OSPEDALE.descrizione;
+  config.sede.dominioEmail = SEDE_OSPEDALE.dominioEmail;
+  const prenotazioni = buildPrenotazioniOspedale(dipendenti, stalli, config.turni);
+  const visitatori   = [];
+  const accessi      = buildAccessiOspedale(prenotazioni, dipendenti, config.turni);
+  return {
+    zone, stalli, dipendenti, prenotazioni, visitatori,
+    segnalazioni: [], accessi,
+    hardware: buildHardware(),
+    richiestePass: [],
+    config,
+    utentiPiattaforma: buildUtentiPiattaforma(),
+    dipendenteDemoId: dipendenti.find(d => d.utenteDemo).id
+  };
+}
+
+/* ==========================================================================
    3. APPSTATE
 ========================================================================== */
 
@@ -1857,6 +2127,8 @@ const AppState = {
     fmWeekOffset: 0,
     empWeekOffset: 0,
     empRichiesteTab: 'pass',   // 'pass' | 'segnalazioni'
+    mappaTurnoId: null,        // turno selezionato in Mappa; null = turno corrente
+    demoScenario: 'uffici',    // 'uffici' | 'ospedale'
     filtri: {
       accessi:    { q: '', tipo: '', stato: '', stallo: '', anomalia: false, aperto: false },
       dipendenti: { q: '' }
@@ -1945,23 +2217,101 @@ const S = {
       con CODE-17B, insieme alla UI che permette di scegliere un turno.
       Attivarlo prima farebbe sparire dalla mappa tutte le prenotazioni
       esistenti, che hanno turnoId === null. */
-  turnoCompatibile(prenotazione) {
+  turnoCompatibile(prenotazione, turnoId) {
     if (AppState.config.modalitaPrenotazione !== 'turni') return true;
-    return true;   // STUB CODE-17A — non filtrare finche' la UI non esiste
+    /* Una prenotazione senza turno e' GIORNALIERA: occupa lo stallo per tutta
+       la giornata, quindi in ogni turno. E' cio' che rende non distruttivo il
+       passaggio a 'turni' su dati creati in modalita' giornaliera. */
+    if (!prenotazione.turnoId) return true;
+    if (!turnoId) return true;
+    return prenotazione.turnoId === turnoId;
   },
 
-  statoStallo(stalloId, dataISO) {
+  /** Il turno di riferimento per la mappa: quello scelto dal FM, altrimenti
+      quello attivo adesso. */
+  turnoAttivoMappa() {
+    const sel = AppState.ui.mappaTurnoId;
+    return (sel && S.turno(sel)) || S.turnoCorrente();
+  },
+
+  /** Minuti dalla mezzanotte di un 'HH:MM'. */
+  minutiDa(hhmmStr) {
+    const [h, m] = String(hhmmStr || '0:0').split(':').map(Number);
+    return (h || 0) * 60 + (m || 0);
+  },
+
+  /** Distanza in minuti fra due istanti della giornata, tenendo conto che il
+      giorno e' circolare: fra 23:50 e 00:10 ci sono 20 minuti, non 1420. */
+  distanzaCircolare(a, b) {
+    const d = Math.abs(a - b) % 1440;
+    return Math.min(d, 1440 - d);
+  },
+
+  /** true se ADESSO (o all'ora passata) si e' dentro la finestra di cambio
+      consegne su questo stallo: si e' a +/- tolleranza da un confine fra due
+      turni E lo stallo e' prenotato in ENTRAMBI i turni coinvolti.
+      Senza la seconda condizione ogni stallo diventerebbe giallo due volte al
+      giorno, anche quando non c'e' nessun passaggio di consegne. */
+  cambioTurnoInCorso(stalloId, dataISO, quando) {
+    if (AppState.config.modalitaPrenotazione !== 'turni') return false;
+    const turni = AppState.config.turni || [];
+    if (turni.length < 2) return false;
+    const toll = AppState.config.tolleranzaCambioTurnoMin || 0;
+    if (!toll) return false;
+    const daData = (d) => d.getHours() * 60 + d.getMinutes();
+    const ora = (quando === undefined || quando === null) ? daData(new Date())
+      : (quando instanceof Date ? daData(quando) : Number(quando));
+    const data = dataISO || OGGI_ISO;
+    const prenotato = (tid) => AppState.prenotazioni.some(p =>
+      p.stalloId === stalloId && p.data === data && p.tipo === 'ufficio'
+      && p.stato === 'attiva' && p.turnoId === tid);
+    return turni.some(t => {
+      const confine = S.minutiDa(t.inizio);
+      if (S.distanzaCircolare(ora, confine) > toll) return false;
+      /* il turno che finisce su questo confine */
+      const uscente = turni.find(x => S.minutiDa(x.fine) === confine);
+      return !!uscente && uscente.id !== t.id && prenotato(uscente.id) && prenotato(t.id);
+    });
+  },
+
+  /** KPI per turno di un giorno: prenotati, liberi, % occupazione. */
+  kpiPerTurno(giornoIso) {
+    const data = giornoIso || OGGI_ISO;
+    const totale = AppState.stalli.length;
+    return (AppState.config.turni || []).map(t => {
+      const prenotati = AppState.prenotazioni.filter(p =>
+        p.data === data && p.stato === 'attiva' && p.tipo === 'ufficio'
+        && p.stalloId && p.turnoId === t.id).length;
+      const liberi = AppState.stalli.filter(s => S.statoStallo(s.id, data, t.id).stato === 'libero').length;
+      const occupati = totale - liberi;
+      return {
+        turno: t, turnoId: t.id, label: t.label, orario: t.inizio + '–' + t.fine,
+        prenotati, liberi, totale, occupati,
+        perc: totale ? Math.round(occupati / totale * 100) : 0
+      };
+    });
+  },
+
+  statoStallo(stalloId, dataISO, turnoId) {
     const st = S.stallo(stalloId);
     if (!st) return { stato: 'libero', cls: 'ms-free', label: 'Libero' };
     const data = dataISO || OGGI_ISO;
     const oggi = data === OGGI_ISO;
+    /* In 'giornaliera' resta undefined e nessun filtro si attiva.
+       In 'turni' senza turno esplicito si guarda il turno attivo adesso. */
+    const tid = AppState.config.modalitaPrenotazione === 'turni'
+      ? (turnoId || (S.turnoCorrente() || {}).id) : undefined;
 
     if (st.tipo === 'manutenzione')        return { ...STATO_STALLO.manutenzione, stato: 'manutenzione', stalloId };
     if (st.disponibilita === 'bloccato')   return { ...STATO_STALLO.bloccato,     stato: 'bloccato',     stalloId };
 
     /* 1. accesso in corso (solo per oggi) */
     if (oggi) {
-      const acc = AppState.accessi.find(a => a.stalloId === stalloId && a.uscita === null && a.data === data);
+      const acc = AppState.accessi.find(a => a.stalloId === stalloId && a.uscita === null && a.data === data
+        /* un accesso appartiene al turno in cui e' iniziato: senza questo
+           filtro un ingresso del mattino terrebbe rosso lo stallo anche nella
+           vista del turno di notte, annullando la capacita' 3x */
+        && (!tid || !a.ingresso || (S.turnoCorrente(S.minutiDa(a.ingresso)) || {}).id === tid));
       if (acc) {
         const abusivo = acc.stato === 'abusivo';
         return {
@@ -1982,7 +2332,7 @@ const S = {
 
     /* 2. prenotazione attiva del giorno */
     const pre = AppState.prenotazioni.find(p => p.stalloId === stalloId && p.data === data
-      && p.tipo === 'ufficio' && p.stato === 'attiva' && S.turnoCompatibile(p));
+      && p.tipo === 'ufficio' && p.stato === 'attiva' && S.turnoCompatibile(p, tid));
     if (pre) {
       const dip = S.dipendente(pre.dipendenteId);
       return { stato: 'prenotato', cls: 'ms-occ', label: 'Prenotato', occupanteNome: dip ? dip.nomeCompleto : '—', prenotazioneId: pre.id, dipendenteId: pre.dipendenteId, stalloId };
@@ -1994,10 +2344,10 @@ const S = {
   },
 
   /** true se lo stallo è prenotabile da quel dipendente in quella data */
-  stalloPrenotabile(stalloId, dataISO, dipendenteId) {
+  stalloPrenotabile(stalloId, dataISO, dipendenteId, turnoId) {
     const st = S.stallo(stalloId);
     if (!st) return false;
-    if (S.statoStallo(stalloId, dataISO).stato !== 'libero') return false;
+    if (S.statoStallo(stalloId, dataISO, turnoId).stato !== 'libero') return false;
     if (st.tipo === 'visitatori' || st.tipo === 'manutenzione') return false;
     if (st.disponibilita === 'bloccato') return false;
     const dip = S.dipendente(dipendenteId);
@@ -2008,12 +2358,12 @@ const S = {
 
   /** Stallo assegnato automaticamente + PERCHE (RF09).
       Priorita: 1) stallo fisso  2) caratteristica  3) stesso piano  4) primo libero */
-  assegnaStalloConMotivo(dipendenteId, dataISO) {
+  assegnaStalloConMotivo(dipendenteId, dataISO, turnoId) {
     const dip = S.dipendente(dipendenteId);
-    if (dip && dip.stalloId && S.stalloPrenotabile(dip.stalloId, dataISO, dipendenteId)) {
+    if (dip && dip.stalloId && S.stalloPrenotabile(dip.stalloId, dataISO, dipendenteId, turnoId)) {
       return { stalloId: dip.stalloId, motivo: 'fisso' };
     }
-    const candidati = AppState.stalli.filter(s => S.stalloPrenotabile(s.id, dataISO, dipendenteId));
+    const candidati = AppState.stalli.filter(s => S.stalloPrenotabile(s.id, dataISO, dipendenteId, turnoId));
     const preferenza = dip && dip.caratteristica !== 'standard' ? dip.caratteristica : null;
     if (preferenza) {
       const m = candidati.find(s => s.tipo === preferenza);
@@ -2026,8 +2376,8 @@ const S = {
   },
 
   /** wrapper storico: restituisce solo il codice (usato da prenota, segnalazioni, ...) */
-  assegnaStalloAutomatico(dipendenteId, dataISO) {
-    return S.assegnaStalloConMotivo(dipendenteId, dataISO).stalloId;
+  assegnaStalloAutomatico(dipendenteId, dataISO, turnoId) {
+    return S.assegnaStalloConMotivo(dipendenteId, dataISO, turnoId).stalloId;
   },
 
   /** Perche' questo dipendente ha PROPRIO questo stallo.
@@ -2436,8 +2786,10 @@ const S = {
   },
 
   /* ---- stalli selezionabili in un modale ---- */
-  stalliDisponibiliPer(dipendenteId, dataISO) {
-    return AppState.stalli.filter(s => S.stalloPrenotabile(s.id, dataISO || OGGI_ISO, dipendenteId)).map(s => s.id);
+  stalliDisponibiliPer(dipendenteId, dataISO, turnoId) {
+    return AppState.stalli
+      .filter(s => S.stalloPrenotabile(s.id, dataISO || OGGI_ISO, dipendenteId, turnoId))
+      .map(s => s.id);
   }
 };
 
@@ -2707,18 +3059,17 @@ const A = {
   },
 
   /* ---- PRENOTAZIONI ---- */
-  prenota({ dipendenteId, dataISO, tipo, stalloId, creataDa }) {
+  prenota({ dipendenteId, dataISO, tipo, stalloId, creataDa, turnoId }) {
     const esistente = S.prenotazione(dipendenteId, dataISO);
     if (esistente) A.annullaPrenotazione(esistente.id, { silent: true });
-    const spot = tipo === 'ufficio' ? (stalloId || S.assegnaStalloAutomatico(dipendenteId, dataISO)) : null;
+    const spot = tipo === 'ufficio' ? (stalloId || S.assegnaStalloAutomatico(dipendenteId, dataISO, turnoId)) : null;
     if (tipo === 'ufficio' && !spot) { Store.emit('prenotazioni'); return { errore: 'Nessuno stallo disponibile per la data selezionata.' }; }
     const p = {
       id: nextId('PRE'), dipendenteId, data: dataISO, tipo,
       stalloId: spot, stato: 'attiva', checkIn: null, checkOut: null,
       creataDa: creataDa || 'dipendente',
-      /* anche le prenotazioni create a runtime nascono giornaliere: senza
-         questo campo le nuove differirebbero da quelle del seed */
-      turnoId: null
+      /* in modalita' giornaliera resta null, come da CODE-17A */
+      turnoId: turnoId || null
     };
     AppState.prenotazioni.push(p);
     Store.emit('prenotazioni');
@@ -3046,11 +3397,26 @@ const A = {
       turno, cosi' assegnazione dello stallo, sostituzione di una prenotazione
       esistente e chiusura degli accessi restano in un posto solo. */
   prenotaTurno({ dipendenteId, stalloId, giornoIso, turnoId }) {
-    const p = A.prenota({ dipendenteId, dataISO: giornoIso, tipo: 'ufficio', stalloId });
-    if (!p || p.errore) return p;
-    p.turnoId = turnoId || null;
-    Store.emit('prenotazioni');
-    return p;
+    return A.prenota({ dipendenteId, dataISO: giornoIso, tipo: 'ufficio', stalloId, turnoId });
+  },
+
+  /* ---- configurazione dei turni dalla UI ---- */
+  setMappaTurno(turnoId) { AppState.ui.mappaTurnoId = turnoId; Store.emit('nav'); },
+  aggiornaTurno(turnoId, patch) {
+    const t = (AppState.config.turni || []).find(x => x.id === turnoId);
+    if (t) Object.assign(t, patch);
+    Store.emit('config');
+    return t;
+  },
+  aggiungiTurno() {
+    const n = (AppState.config.turni || []).length + 1;
+    AppState.config.turni.push({ id: 'turno-' + nextId('TRN'), label: 'Turno ' + n, inizio: '08:00', fine: '16:00' });
+    Store.emit('config');
+  },
+  rimuoviTurno(turnoId) {
+    AppState.config.turni = (AppState.config.turni || []).filter(t => t.id !== turnoId);
+    if (AppState.ui.mappaTurnoId === turnoId) AppState.ui.mappaTurnoId = null;
+    Store.emit('config');
   },
 
   /* ---- destinatari delle notifiche segnalazioni ---- */
@@ -3139,6 +3505,8 @@ const A = {
       empTipoGiorno: 'ufficio'
     };
     AppState.ui.mapSelection = [];
+    AppState.ui.mappaTurnoId = null;
+    AppState.ui.demoScenario = 'uffici';
     AppState.ui.fmWeekOffset = 0;
     AppState.ui.empWeekOffset = 0;
     AppState.ui.editSede = false;
@@ -3149,6 +3517,47 @@ const A = {
     Store.emit('ripristino');
     return { ok: true, sessioneChiusa: false };
   },
+  /** Sostituisce IN PLACE tutti i dati con quelli di uno scenario.
+      Stessa regola di ripristinaDemo(): AppState non va rimpiazzato, perche'
+      ogni modulo ne tiene un riferimento preso al load. */
+  _caricaScenario(d, scenario) {
+    AppState.zone              = d.zone;
+    AppState.stalli            = d.stalli;
+    AppState.dipendenti        = d.dipendenti;
+    AppState.prenotazioni      = d.prenotazioni;
+    AppState.visitatori        = d.visitatori;
+    AppState.segnalazioni      = d.segnalazioni;
+    AppState.accessi           = d.accessi;
+    AppState.hardware          = d.hardware;
+    AppState.richiestePass     = d.richiestePass;
+    AppState.config            = d.config;
+    AppState.utentiPiattaforma = d.utentiPiattaforma;
+    AppState.utenti.dipendenteDemoId = d.dipendenteDemoId;
+    AppState.ui.demoScenario   = scenario;
+    AppState.ui.filtri = {
+      accessi:    { q: '', tipo: '', stato: '', stallo: '', anomalia: false, aperto: false },
+      dipendenti: { q: '' }
+    };
+    AppState.ui.selezione = {
+      stalloId: null, dipendenteId: null, accessoId: null, visitatoreId: null,
+      segnalazioneId: null, hardwareId: null, richiestaId: null, giornoISO: null,
+      empTipoGiorno: 'ufficio'
+    };
+    AppState.ui.mapSelection = [];
+    AppState.ui.mappaTurnoId = null;
+    AppState.ui.fmWeekOffset = 0;
+    AppState.ui.empWeekOffset = 0;
+    AppState.ui.editSede = false;
+    AppState.ui.attivazione = null;
+    const sopravvive = !!S.utenteCorrente();
+    if (!sopravvive) { A.logout(); return { ok: true, sessioneChiusa: true }; }
+    Store.emit('scenario');
+    return { ok: true, sessioneChiusa: false };
+  },
+
+  attivaDemoOspedale()  { return A._caricaScenario(costruisciDatiOspedale(), 'ospedale'); },
+  ripristinaDemoUffici() { return A._caricaScenario(costruisciDati(), 'uffici'); },
+
   setAnalyticsPeriodo(tipo) { AppState.ui.analyticsPeriodo = tipo; Store.emit('nav'); },
   setPeriodo(tipo) {
     const mappa = {
@@ -4063,6 +4472,34 @@ Modals.register('emp-book', {
     if (!dip) return UI.alert('Sessione non valida per la Vista Dipendente.', 'warn');
     const pre = S.prenotazione(dip.id, c.giornoISO);
     const tipo = f('tipo', 'ufficio');
+    /* Modalita' a turni: PRIMA si sceglie il turno, poi il sistema assegna.
+       Finche' non e' scelto non ha senso mostrare uno stallo, perche' la
+       disponibilita' dipende dal turno. */
+    if (State.config.modalitaPrenotazione === 'turni' && tipo === 'ufficio') {
+      const turnoSel = f('turnoId', '');
+      const cards = (State.config.turni || []).map(t => {
+        const liberi = S.stalliDisponibiliPer(dip.id, c.giornoISO, t.id).length;
+        const pieno = liberi === 0;
+        return `<div class="turno-card${turnoSel === t.id ? ' active' : ''}${pieno ? ' pieno' : ''}"${pieno ? '' : UI.act('emp-sel-turno', { turnoId: t.id })}>
+          <div class="turno-card-hd">
+            <div class="turno-card-lbl">${UI.esc(t.label)}</div>
+            ${UI.badge(pieno ? 'Esaurito' : 'Disponibile', pieno ? 'red' : 'green')}
+          </div>
+          <div class="turno-card-ora mono">${UI.esc(t.inizio)} – ${UI.esc(t.fine)}</div>
+          <div class="turno-card-posti">${liberi} post${liberi === 1 ? 'o' : 'i'} disponibil${liberi === 1 ? 'e' : 'i'}</div>
+        </div>`;
+      }).join('');
+      const auto = turnoSel ? S.assegnaStalloConMotivo(dip.id, c.giornoISO, turnoSel) : null;
+      return (pre ? UI.alert('Hai già una prenotazione per questo giorno: confermando verrà sostituita.', 'warn') : '')
+        + `<div class="form-label" style="margin-bottom:8px">Seleziona il tuo turno</div>
+           <div class="turni-cards">${cards}</div>`
+        + (auto && auto.stalloId
+            ? UI.alert(`Stallo assegnato: <strong>${UI.esc(auto.stalloId)}</strong> — ${UI.esc(S.motivoAssegnazione(auto.motivo))}.`, 'info')
+              + `<div class="form-hint">Il tuo turno include ±${State.config.tolleranzaCambioTurnoMin} min di tolleranza per il cambio consegne</div>`
+            : turnoSel
+              ? UI.alert('Nessuno stallo disponibile in questo turno.', 'danger')
+              : `<div class="form-hint">Scegli un turno per vedere lo stallo che ti verrà assegnato.</div>`);
+    }
     const stallo = f('stallo') || S.assegnaStalloAutomatico(dip.id, c.giornoISO);
     const st = stallo ? S.stallo(stallo) : null;
 
@@ -4101,6 +4538,13 @@ Modals.register('emp-book', {
     if (!dip) return chiudi('Chiudi');
     const pre = S.prenotazione(dip.id, c.giornoISO);
     const tipo = f('tipo', 'ufficio');
+    if (State.config.modalitaPrenotazione === 'turni' && tipo === 'ufficio') {
+      const turnoSel = f('turnoId', '');
+      const auto = turnoSel ? S.assegnaStalloConMotivo(dip.id, c.giornoISO, turnoSel) : null;
+      return chiudi() + UI.btn('Conferma prenotazione', {
+        azione: 'emp-conferma', params: { giornoIso: c.giornoISO },
+        variante: 'btn-primary', sm: false, disabled: !(auto && auto.stalloId) });
+    }
     return (pre ? UI.btn('Cancella prenotazione', { azione: 'emp-cancella', params: { giornoIso: c.giornoISO }, variante: 'btn-danger', sm: false }) : chiudi())
       + ok(tipo === 'sw' ? '✓ Dichiara Smart Working' : '✓ Conferma prenotazione', 'emp-conferma', { giornoIso: c.giornoISO });
   }
@@ -4403,6 +4847,9 @@ global.PC.Sezioni.dashboard = {
         <div class="card-hd">
           <div class="card-title">🗺 Occupazione per Zona
             <small style="font-weight:400;font-size:11px;color:var(--text-muted);margin-left:6px">Real-time · aggiornato ${new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}</small>
+            ${State.config.modalitaPrenotazione === 'turni' && S.turnoCorrente()
+              ? `<div class="turno-attivo-lbl">Turno attivo: <strong>${UI.esc(S.turnoCorrente().label)}</strong> · ${UI.esc(S.turnoCorrente().inizio)}–${UI.esc(S.turnoCorrente().fine)}</div>`
+              : ''}
           </div>
           ${UI.btn('Mappa completa →', { azione: 'nav', params: { sezione: 'mappa' } })}
         </div>
@@ -4482,7 +4929,7 @@ UI.on('apri-seg', d => Modals.open('seg', { segId: d.segId }));
 ============================================================================ */
 (function (global) {
 'use strict';
-const { UI, Selectors: S, Actions: A, State, Modals, Domini: D } = global.PC;
+const { UI, Selectors: S, Actions: A, State, Modals, Utils: U, Domini: D } = global.PC;
 
 /* la legenda riusa le stesse classi dei tile, così resta allineata al brand */
 const LEGENDA = [
@@ -4498,7 +4945,27 @@ global.PC.Sezioni.mappa = {
     const st = S.kpiStalli();
     const sel = State.ui.mapSelection;
 
-    const kpi = UI.kpiGrid([
+    const perTurni = State.config.modalitaPrenotazione === 'turni';
+    const turnoSel = perTurni ? S.turnoAttivoMappa() : null;
+    const kTurno   = perTurni && turnoSel
+      ? S.kpiPerTurno(U.OGGI_ISO).find(k => k.turnoId === turnoSel.id) : null;
+
+    /* Selettore orizzontale dei turni: non appare in modalita' giornaliera. */
+    const selettoreTurni = perTurni ? `
+      <div class="turni-tabs">
+        ${(State.config.turni || []).map(t => `<div class="turno-tab${turnoSel && t.id === turnoSel.id ? ' active' : ''}"${UI.act('mappa-turno', { turnoId: t.id })}>
+          <span class="turno-tab-lbl">${UI.esc(t.label)}</span>
+          <span class="turno-tab-ora">${UI.esc(t.inizio.slice(0, 2))}–${UI.esc(t.fine.slice(0, 2))}</span>
+        </div>`).join('')}
+      </div>` : '';
+
+    const kpi = UI.kpiGrid(perTurni && kTurno ? [
+      UI.kpi({ label: 'Liberi turno ' + kTurno.label, val: kTurno.liberi + '/' + kTurno.totale, colore: 'green' }),
+      UI.kpi({ label: 'Occupati turno',  val: kTurno.occupati, sub: kTurno.perc + '% occupato', colore: 'red' }),
+      UI.kpi({ label: 'Prenotati turno', val: kTurno.prenotati, colore: 'blue' }),
+      UI.kpi({ label: 'EV ⚡',        val: st.ev,           colore: 'cyan' }),
+      UI.kpi({ label: '♿ Disabili',   val: st.disabili,     colore: 'purple' })
+    ] : [
       UI.kpi({ label: 'Posti Totali', val: st.totale,       colore: 'blue' }),
       UI.kpi({ label: 'Liberi',       val: st.liberi,       sub: st.percDisponibilita + '% disponibile', colore: 'green' }),
       UI.kpi({ label: 'Occupati',     val: st.occupati,     sub: st.percOccupazione + '% occupato', colore: 'red' }),
@@ -4509,7 +4976,9 @@ global.PC.Sezioni.mappa = {
     const barraLegenda = `
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px">
         <div class="map-legend">
-          ${LEGENDA.map(([l, cls]) => `<span class="leg"><span class="leg-sq ${cls}"></span>${l}</span>`).join('')}
+          ${LEGENDA.concat(State.config.modalitaPrenotazione === 'turni'
+              ? [['Cambio turno', 'ms-cambio']] : [])
+            .map(([l, cls]) => `<span class="leg"><span class="leg-sq ${cls}"></span>${l}</span>`).join('')}
         </div>
         ${UI.btn('🅿️ + Aggiungi Stallo', { azione: 'apri-modale', params: { modale: 'add-stallo' }, variante: 'btn-primary' })}
       </div>`;
@@ -4533,20 +5002,28 @@ global.PC.Sezioni.mappa = {
       const liberi = stalli.filter(s => S.statoStallo(s.id).stato === 'libero').length;
       return `<div class="zone-lbl">${UI.esc(z.nome)} <span class="zone-count">${stalli.length - liberi}/${stalli.length}</span></div>
         <div class="map-row">${stalli.map(s => {
-          const stato = S.statoStallo(s.id);
+          const stato = S.statoStallo(s.id, U.OGGI_ISO, turnoSel ? turnoSel.id : undefined);
           const icona = D.TIPO_STALLO[s.tipo].icona;
-          const titolo = `${s.codice} · ${stato.label}${stato.occupanteNome ? ' · ' + stato.occupanteNome : ''}`;
-          return `<div class="mspot ${stato.cls}${State.ui.mapSelection.includes(s.id) ? ' selected' : ''}"${UI.act('click-stallo', { stalloId: s.id })} title="${UI.esc(titolo)}">${icona}${UI.esc(s.codice)}</div>`;
+          /* Giallo = passaggio di consegne in corso: si e' dentro la finestra
+             di tolleranza E lo stallo e' prenotato nei due turni a cavallo. */
+          const inCambio = perTurni && S.cambioTurnoInCorso(s.id, U.OGGI_ISO);
+          const cls = inCambio ? 'ms-cambio' : stato.cls;
+          const titolo = inCambio
+            ? `${s.codice} · cambio turno in corso (±${State.config.tolleranzaCambioTurnoMin} min)`
+            : `${s.codice} · ${stato.label}${stato.occupanteNome ? ' · ' + stato.occupanteNome : ''}`;
+          return `<div class="mspot ${cls}${State.ui.mapSelection.includes(s.id) ? ' selected' : ''}"${UI.act('click-stallo', { stalloId: s.id })} title="${UI.esc(titolo)}">${icona}${UI.esc(s.codice)}</div>`;
         }).join('')}</div>`;
     }).join('');
 
-    return kpi + barraLegenda + barraSel
+    return kpi + selettoreTurni + barraLegenda + barraSel
       + '<div class="map-hint">💡 Click = dettaglio &amp; modifica stallo · Ctrl+Click (o ⌘+Click) = selezione multipla</div>'
       + `<div class="pmap">${mappa}</div>`;
   }
 };
 
 /* ---- handler ---------------------------------------------------------- */
+UI.on('mappa-turno', d => A.setMappaTurno(d.turnoId));
+
 UI.on('click-stallo', (d, ev) => {
   if (ev.ctrlKey || ev.metaKey) { A.toggleSelezioneStallo(d.stalloId); return; }
   Modals.open('stallo-det', { stalloId: d.stalloId });
@@ -4741,6 +5218,26 @@ global.PC.Sezioni.prenotazioni = {
           </div>`).join('')}
       </div>`;
 
+    /* Tabella capacita': una riga per turno, solo in modalita' turni. */
+    const capacita = State.config.modalitaPrenotazione === 'turni'
+      ? UI.card({
+          titolo: '📊 Capacità per turno — oggi',
+          sub: 'Lo stesso parcheggio, servito più volte nella stessa giornata',
+          stile: 'margin-top:14px',
+          body: UI.tabella({
+            head: ['Turno', 'Orario', 'Prenotati', 'Liberi', '% Occupazione'],
+            rows: S.kpiPerTurno(U.OGGI_ISO).map(k => `<tr>
+              <td><b>${UI.esc(k.label)}</b></td>
+              <td class="mono">${UI.esc(k.orario)}</td>
+              <td>${k.prenotati}</td>
+              <td>${k.liberi}</td>
+              <td><b>${k.perc}%</b></td>
+            </tr>`),
+            vuoto: 'Nessun turno configurato.'
+          })
+        })
+      : '';
+
     return kpi
       + UI.alert(`📅 Finestra di prenotazione: <strong>${finestra} giorni lavorativi</strong> (oggi incluso) — modificabile in <a data-act="nav" data-sezione="config" style="color:inherit;text-decoration:underline;cursor:pointer">Config → Policy</a>`, 'info')
       + UI.card({
@@ -4754,7 +5251,8 @@ global.PC.Sezioni.prenotazioni = {
             UI.btn('+ Prenota', { azione: 'apri-modale', params: { modale: 'add-bk' }, variante: 'btn-primary' })
           ],
           body: righe.length ? griglia : UI.vuoto('Nessun dipendente corrisponde alla ricerca.')
-        });
+        })
+      + capacita;
   }
 };
 
@@ -4767,6 +5265,15 @@ function cella(c, dip) {
   }
   if (p.tipo === 'sw') {
     return `<div class="bk-slot s-sw"${UI.act('cella-prenota', params)} title="Smart Working">SW</div>`;
+  }
+  /* In modalita' a turni la cella dice ANCHE quale turno: senza, due
+     prenotazioni sullo stesso stallo nello stesso giorno sarebbero
+     indistinguibili, che e' esattamente cio' che la modalita' introduce. */
+  if (State.config.modalitaPrenotazione === 'turni' && p.turnoId) {
+    const t = S.turno(p.turnoId);
+    const cls = { mattino: 't-mattino', pomeriggio: 't-pomeriggio', notte: 't-notte' }[p.turnoId] || 't-altro';
+    return `<div class="bk-slot s-turno ${cls}"${UI.act('cella-prenota', params)} title="${UI.esc(p.stalloId + ' · ' + (t ? t.label + ' ' + t.inizio + '–' + t.fine : p.turnoId))}">
+      <span class="bk-stallo">${UI.esc(p.stalloId)}</span><span class="bk-turno">${UI.esc(t ? t.label : p.turnoId)}</span></div>`;
   }
   /* violazione: lo stallo prenotato risulta occupato abusivamente */
   const stato = S.statoStallo(p.stalloId, c.iso);
@@ -5481,6 +5988,46 @@ function tabParcheggio() {
 /* ── TAB 2 · POLICY ─────────────────────────────────────────────────────── */
 function tabPolicy() {
   const p = State.config.prenotazioni;
+  const turni = State.config.turni || [];
+  const perTurni = State.config.modalitaPrenotazione === 'turni';
+
+  /* In 'giornaliera' si vede SOLO il toggle: nessuna opzione dei turni,
+     come da specifica. La sezione e' in cima perche' decide il senso di
+     tutte le altre. */
+  const cardModalita = UI.card({
+    titolo: '\u{1F504} Modalit\u00e0 Prenotazione',
+    stile: 'margin-bottom:14px',
+    body: `
+      <div class="modalita-toggle">
+        ${[['giornaliera', 'Giornaliera', 'Uno stallo per persona, tutto il giorno'],
+           ['turni', 'Per turni', 'Lo stesso stallo servito da pi\u00f9 turni']]
+          .map(([v, l, sub]) => `<div class="modalita-opt${State.config.modalitaPrenotazione === v ? ' active' : ''}"${UI.act('set-modalita', { modalita: v })}>
+             <div class="modalita-lbl">${l}</div>
+             <div class="modalita-sub">${sub}</div>
+           </div>`).join('')}
+      </div>
+      ${perTurni ? `
+        <div class="sep"></div>
+        <div class="form-label" style="margin-bottom:8px">Turni configurati</div>
+        <div class="turni-list">
+          ${turni.map(t => `<div class="turno-row" data-turno="${UI.esc(t.id)}">
+            <input class="form-input turno-lbl" value="${UI.esc(t.label)}" data-act="turno-label" data-turno-id="${UI.esc(t.id)}" data-focus-key="tl-${UI.esc(t.id)}">
+            <input class="form-input turno-ora" type="time" value="${UI.esc(t.inizio)}" data-act="turno-inizio" data-turno-id="${UI.esc(t.id)}">
+            <span class="turno-sep">\u2192</span>
+            <input class="form-input turno-ora" type="time" value="${UI.esc(t.fine)}" data-act="turno-fine" data-turno-id="${UI.esc(t.id)}">
+            ${UI.btn('\u2715', { azione: 'rimuovi-turno', params: { turnoId: t.id }, titolo: 'Rimuovi turno' })}
+          </div>`).join('')}
+        </div>
+        ${UI.btn('+ Aggiungi turno', { azione: 'aggiungi-turno' })}
+        <div class="sep"></div>
+        ${UI.setting('Tolleranza cambio turno',
+          `\u00b1${State.config.tolleranzaCambioTurnoMin} min di sovrapposizione consentita tra turni consecutivi`,
+          `<div style="display:flex;align-items:center;gap:8px">
+            <input type="range" min="0" max="60" step="5" value="${State.config.tolleranzaCambioTurnoMin}" style="width:110px" data-act="slider-tolleranza">
+            <span class="mono" style="font-size:11px;color:var(--blue);min-width:44px">\u00b1${State.config.tolleranzaCambioTurnoMin} min</span>
+          </div>`)}
+      ` : ''}`
+  });
 
   const cardPrenotazioni = UI.card({
     titolo: '⏰ Prenotazioni',
@@ -5536,7 +6083,7 @@ function tabPolicy() {
     ].join('')
   });
 
-  return `<div class="g2"><div>${cardPrenotazioni}${cardEv}</div><div>${cardSw}${cardViolazioni}</div></div>`;
+  return cardModalita + `<div class="g2"><div>${cardPrenotazioni}${cardEv}</div><div>${cardSw}${cardViolazioni}</div></div>`;
 }
 
 /* ── TAB 3 · NOTIFICHE ──────────────────────────────────────────────────── */
@@ -5654,6 +6201,25 @@ UI.on('rimuovi-email-notifica', d => {
 });
 
 UI.onInput('slider-settimane', (d, ev) => A.setPolicy({ finestraGiorniLavorativi: parseInt(ev.target.value, 10) }));
+
+/* ---- modalita' a turni ---- */
+UI.on('set-modalita', d => {
+  A.setModalitaPrenotazione(d.modalita);
+  UI.toast(d.modalita === 'turni'
+    ? '\u{1F504} Modalit\u00e0 a turni attiva \u00b7 mappa e prenotazioni ora ragionano per turno'
+    : '\u{1F504} Modalit\u00e0 giornaliera ripristinata');
+});
+UI.onInput('turno-label',  (d, ev) => A.aggiornaTurno(d.turnoId, { label: ev.target.value }));
+UI.onChange('turno-inizio', (d, ev) => A.aggiornaTurno(d.turnoId, { inizio: ev.target.value }));
+UI.onChange('turno-fine',   (d, ev) => A.aggiornaTurno(d.turnoId, { fine: ev.target.value }));
+UI.on('aggiungi-turno', () => A.aggiungiTurno());
+UI.on('rimuovi-turno', d => {
+  if ((State.config.turni || []).length <= 1) { UI.toast('Deve restare almeno un turno'); return; }
+  const t = S.turno(d.turnoId);
+  A.rimuoviTurno(d.turnoId);
+  UI.toast(`Turno ${t ? t.label : ''} rimosso`);
+});
+UI.onInput('slider-tolleranza', (d, ev) => A.setTolleranzaCambioTurno(parseInt(ev.target.value, 10)));
 UI.onChange('cfg-noshow',       (d, ev) => A.setPolicy({ noShowMinuti: parseInt(ev.target.value, 10) || 30 }));
 UI.onChange('cfg-durata',       (d, ev) => A.setPolicy({ durataMaxDipendenteOre: parseInt(ev.target.value, 10) || 10 }));
 UI.onChange('cfg-durata-ev',    (d, ev) => A.setPolicy({ durataMaxEvOre: parseInt(ev.target.value, 10) || 4 }));
@@ -5857,6 +6423,16 @@ function cardParcheggi() {
           </div>
         </div>
         ${State.ui.editSede ? formSede(sede, kpi) : ''}
+        <div class="scenario-box">
+          <div class="scenario-lbl">Modalità demo:</div>
+          <div class="modalita-toggle scenario-toggle">
+            ${[['uffici', '🏢 Uffici'], ['ospedale', '🏥 Ospedale']].map(([v, l]) =>
+              `<div class="modalita-opt${State.ui.demoScenario === v ? ' active' : ''}"${UI.act('set-scenario', { scenario: v })}>
+                 <div class="modalita-lbl">${l}</div>
+               </div>`).join('')}
+          </div>
+          <div class="scenario-nota">Lo scenario ospedale attiva la <strong>modalità a turni</strong> e sostituisce i dati demo. Si torna indietro con “Uffici”.</div>
+        </div>
         ${UI.infoGrid([
           UI.infoBox('Facility Manager assegnato', fm ? UI.esc(fm.nomeCompleto) : '<span class="muted">non assegnato</span>'),
           UI.infoBox('Posti totali', kpi.totale),
@@ -5925,6 +6501,17 @@ UI.on('conferma-riduzione-posti', d => {
   A.aggiornaSede({ nome: d.nome, indirizzo: d.indirizzo, postiTotali: parseInt(d.posti, 10) });
   Modals.close();
   UI.toast(`✓ Sede aggiornata · ${ant.rimossi.length} stalli rimossi · ${ant.prenotazioni} prenotazioni annullate`);
+});
+
+UI.on('set-scenario', d => {
+  if (State.ui.demoScenario === d.scenario) return;
+  if (d.scenario === 'ospedale') {
+    A.attivaDemoOspedale();
+    UI.toast('🏥 Demo ospedale attivata — modalità turni abilitata');
+  } else {
+    A.ripristinaDemoUffici();
+    UI.toast('🏢 Demo uffici ripristinata');
+  }
 });
 
 UI.on('conferma-ripristino-demo', () => {
@@ -6355,7 +6942,9 @@ global.PC.Sezioni.dipendenteView = {
           return `<div class="my-booking-card"${UI.act('emp-apri-giorno', { giornoIso: p.data })}>
             <div><div class="mbc-date">${d.getDate()}</div><div class="mbc-month">${U.MONTHS_SHORT[d.getMonth()]}</div></div>
             <div class="mbc-info">
-              <div class="mbc-spot">${p.tipo === 'ufficio' ? 'Stallo ' + UI.esc(p.stalloId) : 'Smart Working 🏠'}</div>
+              <div class="mbc-spot">${p.tipo === 'ufficio'
+                ? 'Stallo ' + UI.esc(p.stalloId) + (p.turnoId && S.turno(p.turnoId) ? ' · ' + UI.esc(S.turno(p.turnoId).label) : '')
+                : 'Smart Working 🏠'}</div>
               <div class="mbc-meta">${U.DAYS_FULL_IT[d.getDay()]} · ${p.tipo === 'ufficio' ? UI.esc((S.stallo(p.stalloId) || {}).piano || '') + ' · check-in via app' : 'nessuno stallo necessario'}</div>
             </div>
             <div class="mbc-actions">
@@ -6473,7 +7062,11 @@ function cardGiorno(g, dip) {
 
   let cls = 'emp-day', stato = '', statoCls = '', spot = '';
   if (passato)                    { cls += ' day-past'; stato = 'Passato'; statoCls = 'past'; }
-  else if (pre && pre.tipo === 'ufficio') { cls += ' day-booked'; stato = '✓ Prenotato'; statoCls = 'ok'; spot = pre.stalloId; }
+  else if (pre && pre.tipo === 'ufficio') {
+    cls += ' day-booked'; stato = '✓ Prenotato'; statoCls = 'ok';
+    const t = pre.turnoId ? S.turno(pre.turnoId) : null;
+    spot = pre.stalloId + (t ? ' · ' + t.label : '');
+  }
   else if (pre && pre.tipo === 'sw')      { cls += ' day-sw'; stato = '🏠 Smart W.'; statoCls = 'sw'; }
   else if (fuoriFinestra)         { cls += ' day-past'; stato = 'Non prenotabile'; statoCls = 'past'; }
   else                            { cls += ' day-todo'; stato = '+ Prenota'; statoCls = 'free'; }
@@ -6524,6 +7117,10 @@ UI.on('emp-apri-giorno', d => {
 UI.on('emp-apri-cancella', d => Modals.open('emp-cancel', { giornoISO: d.giornoIso }));
 UI.on('emp-sel-tipo', d => { Modals._collect(); Modals.form.tipo = d.valore; Modals._render(); });
 
+/* selezione del turno: stesso schema di emp-sel-tipo, il re-render ricalcola
+   lo stallo assegnato perche' la disponibilita' dipende dal turno */
+UI.on('emp-sel-turno', d => { Modals._collect(); Modals.form.turnoId = d.turnoId; Modals._render(); });
+
 UI.on('emp-cambia-stallo', d => {
   const dip = S.dipendenteCorrente();
   if (!dip) return;
@@ -6544,14 +7141,19 @@ UI.on('emp-conferma', d => {
   if (!dip) { UI.toast('Sessione non valida'); return; }
   const tipo = Modals.form.tipo || 'ufficio';
   const stallo = Modals.form.stallo;
-  const r = A.prenota({ dipendenteId: dip.id, dataISO: d.giornoIso, tipo, stalloId: tipo === 'ufficio' ? stallo : null });
+  const perTurni = State.config.modalitaPrenotazione === 'turni';
+  const turnoId = perTurni && tipo === 'ufficio' ? (Modals.form.turnoId || null) : null;
+  if (perTurni && tipo === 'ufficio' && !turnoId) { UI.toast('Seleziona il turno'); return; }
+  const r = A.prenota({ dipendenteId: dip.id, dataISO: d.giornoIso, tipo,
+    stalloId: tipo === 'ufficio' ? stallo : null, turnoId });
   if (r.errore) { UI.toast('⚠ ' + r.errore); return; }
   Modals.close();
   const quando = U.fmtShort(U.fromISO(d.giornoIso));
   const emailMsg = `· Email di conferma inviata a ${dip.email}`;
+  const t = turnoId ? S.turno(turnoId) : null;
   UI.toast(tipo === 'sw'
     ? `🏠 Smart Working dichiarato per ${quando} · stallo liberato ${emailMsg}`
-    : `✓ Stallo ${r.stalloId} prenotato per ${quando} ${emailMsg}`);
+    : `✓ Stallo ${r.stalloId}${t ? ' · ' + t.label : ''} prenotato per ${quando} ${emailMsg}`);
 });
 
 UI.on('emp-cancella', d => {

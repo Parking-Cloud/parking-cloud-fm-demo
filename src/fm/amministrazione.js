@@ -101,6 +101,16 @@ function cardParcheggi() {
           </div>
         </div>
         ${State.ui.editSede ? formSede(sede, kpi) : ''}
+        <div class="scenario-box">
+          <div class="scenario-lbl">Modalità demo:</div>
+          <div class="modalita-toggle scenario-toggle">
+            ${[['uffici', '🏢 Uffici'], ['ospedale', '🏥 Ospedale']].map(([v, l]) =>
+              `<div class="modalita-opt${State.ui.demoScenario === v ? ' active' : ''}"${UI.act('set-scenario', { scenario: v })}>
+                 <div class="modalita-lbl">${l}</div>
+               </div>`).join('')}
+          </div>
+          <div class="scenario-nota">Lo scenario ospedale attiva la <strong>modalità a turni</strong> e sostituisce i dati demo. Si torna indietro con “Uffici”.</div>
+        </div>
         ${UI.infoGrid([
           UI.infoBox('Facility Manager assegnato', fm ? UI.esc(fm.nomeCompleto) : '<span class="muted">non assegnato</span>'),
           UI.infoBox('Posti totali', kpi.totale),
@@ -169,6 +179,17 @@ UI.on('conferma-riduzione-posti', d => {
   A.aggiornaSede({ nome: d.nome, indirizzo: d.indirizzo, postiTotali: parseInt(d.posti, 10) });
   Modals.close();
   UI.toast(`✓ Sede aggiornata · ${ant.rimossi.length} stalli rimossi · ${ant.prenotazioni} prenotazioni annullate`);
+});
+
+UI.on('set-scenario', d => {
+  if (State.ui.demoScenario === d.scenario) return;
+  if (d.scenario === 'ospedale') {
+    A.attivaDemoOspedale();
+    UI.toast('🏥 Demo ospedale attivata — modalità turni abilitata');
+  } else {
+    A.ripristinaDemoUffici();
+    UI.toast('🏢 Demo uffici ripristinata');
+  }
 });
 
 UI.on('conferma-ripristino-demo', () => {

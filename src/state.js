@@ -964,6 +964,208 @@ function buildRichiestePass(dipendenti) {
 }
 
 /* ==========================================================================
+   2.9 SCENARIO OSPEDALE (CODE-17B)
+   Secondo set di dati demo, con modalita' a turni attiva. Serve a mostrare
+   la capacita' 3x: lo stesso stallo usato da tre persone diverse nella
+   stessa giornata, una per turno.
+========================================================================== */
+
+const SEDE_OSPEDALE = {
+  nome:      'Ospedale Demo — Area Sanitaria',
+  nomeBreve: 'Area Sanitaria',
+  descrizione: 'Ospedale Demo · Area Sanitaria',
+  dominioEmail: 'ospedaledemo.it',
+  helpdesk:  'helpdesk@parkingcloud.eu'
+};
+
+/* 5 medici + 10 infermieri + 5 staff = 20. Il primo e' l'account demo:
+   senza di lui non si potrebbe entrare come dipendente nello scenario. */
+const RUOLI_OSPEDALE = [
+  { ruolo: 'medico',     label: 'Medico',     quanti: 5,  reparto: 'Area Medica' },
+  { ruolo: 'infermiere', label: 'Infermiere', quanti: 10, reparto: 'Area Infermieristica' },
+  { ruolo: 'staff',      label: 'Staff',      quanti: 5,  reparto: 'Servizi Generali' }
+];
+
+function buildDipendentiOspedale(stalli) {
+  const out = [];
+  const assegnabili = stalli
+    .filter(s => ['A', 'B', 'C'].includes(s.zonaId) && s.tipo === 'standard')
+    .map(s => s.codice);
+  let k = 0;
+  RUOLI_OSPEDALE.forEach(r => {
+    for (let i = 0; i < r.quanti; i++) {
+      const f = rnd() < 0.6;
+      /* Su soli 20 nomi una collisione e' probabile, e due omonimi sullo
+         stallo vetrina renderebbero incomprensibile la demo della capacita' 3x.
+         Si estrae finche' il nome completo non e' nuovo. */
+      let nome, cognome, tentativi = 0;
+      do {
+        nome = f ? rPick(NOMI_F) : rPick(NOMI_M);
+        cognome = rPick(COGNOMI);
+        tentativi++;
+      } while (tentativi < 40 && out.some(d => d.nomeCompleto === nome + ' ' + cognome));
+      const primo = out.length === 0;
+      /* Stallo fisso solo ai medici: infermieri e staff ruotano sui turni,
+         ed e' proprio la rotazione che la demo deve mostrare. */
+      const stalloId = r.ruolo === 'medico' ? assegnabili[k++] : null;
+      out.push({
+        id: nextId('DIP'),
+        nome, cognome,
+        nomeCompleto: nome + ' ' + cognome,
+        iniziali: iniziali(nome, cognome),
+        email: primo ? 'dipendente@demo.parkingcloud.eu'
+                     : slug(nome)[0] + '.' + slug(cognome) + out.length + '@' + SEDE_OSPEDALE.dominioEmail,
+        dipartimento: r.reparto,
+        ruolo: r.ruolo,
+        ruoloLabel: r.label,
+        stalloId,
+        poolRotante: !stalloId,
+        caratteristica: 'standard',
+        metodoAccesso: 'app2n',
+        appAttiva: true,
+        stato: 'attivo',
+        bloccoMotivo: null, bloccoTipo: null, bloccoDal: null,
+        accessiMese: rInt(14, 22),
+        noShow: 0,
+        segnalazioniFatte: 0,
+        statoAccount: 'attivo',
+        puoRichiederePass: primo || r.ruolo === 'medico',
+        utenteDemo: primo,
+        inEvidenza: true
+      });
+    }
+  });
+  const byCode = new Map(stalli.map(s => [s.codice, s]));
+  out.forEach(d => { if (d.stalloId && byCode.has(d.stalloId)) byCode.get(d.stalloId).titolareId = d.id; });
+  return out;
+}
+
+/* Prenotazioni su tre turni. STALLO_VETRINA e' prenotato da tre persone
+   diverse nello stesso giorno: e' la dimostrazione della capacita' 3x. */
+const STALLO_VETRINA = 'A-07';
+
+function buildPrenotazioniOspedale(dipendenti, stalli, turni) {
+  const out = [];
+  const pool = stalli
+    .filter(s => s.tipo === 'standard' && s.codice !== STALLO_VETRINA)
+    .map(s => s.codice);
+  const giorni = [];
+  for (let i = -3; i <= 6; i++) {
+    const g = addDays(OGGI, i);
+    if (isLavorativo(g)) giorni.push(g);
+  }
+
+  giorni.forEach((giorno, gi) => {
+    const iso = toISO(giorno);
+    const passato = iso < OGGI_ISO;
+    let cursore = (gi * 7) % pool.length;
+
+    turni.forEach((t, ti) => {
+      /* i tre della vetrina: uno per turno, sempre sullo stesso stallo */
+      const vetrina = dipendenti[(gi + ti * 3) % dipendenti.length];
+      out.push({
+        id: nextId('PRE'), dipendenteId: vetrina.id, data: iso, tipo: 'ufficio',
+        stalloId: STALLO_VETRINA,
+        stato: passato ? 'completata' : 'attiva',
+        checkIn:  passato ? t.inizio : null,
+        checkOut: passato ? t.fine   : null,
+        creataDa: 'dipendente', turnoId: t.id
+      });
+
+      /* riempimento del turno: quota diversa per turno, cosi' i KPI per turno
+         non sono tutti uguali e la tabella capacita' dice qualcosa */
+      const quota = [9, 7, 4][ti] !== undefined ? [9, 7, 4][ti] : 5;
+      for (let n = 0; n < quota; n++) {
+        const dip = dipendenti[(gi * 3 + ti * 5 + n + 1) % dipendenti.length];
+        if (dip.id === vetrina.id) continue;
+        if (out.some(p => p.data === iso && p.turnoId === t.id && p.dipendenteId === dip.id)) continue;
+        const stalloId = (dip.stalloId && !out.some(p => p.data === iso && p.turnoId === t.id && p.stalloId === dip.stalloId))
+          ? dip.stalloId
+          : pool[cursore++ % pool.length];
+        if (out.some(p => p.data === iso && p.turnoId === t.id && p.stalloId === stalloId)) continue;
+        out.push({
+          id: nextId('PRE'), dipendenteId: dip.id, data: iso, tipo: 'ufficio',
+          stalloId,
+          stato: passato ? 'completata' : 'attiva',
+          checkIn:  passato ? t.inizio : null,
+          checkOut: passato ? t.fine   : null,
+          creataDa: 'dipendente', turnoId: t.id
+        });
+      }
+    });
+  });
+  return out;
+}
+
+/** Accessi coerenti col turno della prenotazione.
+    Riusare buildAccessi() qui non funziona: genera tutti gli ingressi in
+    fascia mattutina, e le tre persone dello stallo vetrina risulterebbero
+    dentro contemporaneamente. L'ingresso deve cadere nel proprio turno, e
+    l'accesso resta APERTO solo se quel turno e' quello in corso adesso. */
+function buildAccessiOspedale(prenotazioni, dipendenti, turni) {
+  const out = [];
+  const byId = new Map(dipendenti.map(d => [d.id, d]));
+  const adesso = S.turnoCorrente() || turni[0];
+  const oraOra = new Date().getHours() * 60 + new Date().getMinutes();
+
+  prenotazioni
+    .filter(p => p.data === OGGI_ISO && p.tipo === 'ufficio' && p.stalloId)
+    .forEach(p => {
+      const dip = byId.get(p.dipendenteId);
+      const t = turni.find(x => x.id === p.turnoId);
+      if (!dip || !t) return;
+      const inizio = S.minutiDa(t.inizio);
+      const fine   = S.minutiDa(t.fine);
+      const corrente = t.id === adesso.id;
+      /* turno non ancora iniziato: nessuno e' entrato */
+      const iniziato = corrente || (inizio <= fine ? oraOra >= fine : false);
+      if (!iniziato) return;
+      out.push({
+        id: nextId('ACC'),
+        data: OGGI_ISO,
+        tipo: 'dipendente',
+        personaId: dip.id,
+        personaNome: dip.nomeCompleto,
+        stalloId: p.stalloId,
+        ingresso: minutesToHHMM((inizio + rInt(2, 35)) % 1440),
+        uscita: corrente ? null : minutesToHHMM(fine),
+        metodo: (p.stalloId.startsWith('B')) ? 'pin' : (out.length % 2 === 0 ? 'app' : 'qr'),
+        stato: corrente ? 'dentro' : 'uscito',
+        anomalia: null,
+        targa: null,
+        prenotazioneId: p.id
+      });
+    });
+  return out;
+}
+
+function costruisciDatiOspedale() {
+  resetGeneratori();
+  const zone         = ZONE_SEED.map(z => Object.assign({}, z));
+  const stalli       = buildStalli(zone);
+  const dipendenti   = buildDipendentiOspedale(stalli);
+  const config       = buildConfig();
+  config.modalitaPrenotazione   = 'turni';
+  config.tolleranzaCambioTurnoMin = 30;
+  config.sede.nome        = SEDE_OSPEDALE.nome;
+  config.sede.nomeBreve   = SEDE_OSPEDALE.nomeBreve;
+  config.sede.descrizione = SEDE_OSPEDALE.descrizione;
+  config.sede.dominioEmail = SEDE_OSPEDALE.dominioEmail;
+  const prenotazioni = buildPrenotazioniOspedale(dipendenti, stalli, config.turni);
+  const visitatori   = [];
+  const accessi      = buildAccessiOspedale(prenotazioni, dipendenti, config.turni);
+  return {
+    zone, stalli, dipendenti, prenotazioni, visitatori,
+    segnalazioni: [], accessi,
+    hardware: buildHardware(),
+    richiestePass: [],
+    config,
+    utentiPiattaforma: buildUtentiPiattaforma(),
+    dipendenteDemoId: dipendenti.find(d => d.utenteDemo).id
+  };
+}
+
+/* ==========================================================================
    3. APPSTATE
 ========================================================================== */
 
@@ -1027,6 +1229,8 @@ const AppState = {
     fmWeekOffset: 0,
     empWeekOffset: 0,
     empRichiesteTab: 'pass',   // 'pass' | 'segnalazioni'
+    mappaTurnoId: null,        // turno selezionato in Mappa; null = turno corrente
+    demoScenario: 'uffici',    // 'uffici' | 'ospedale'
     filtri: {
       accessi:    { q: '', tipo: '', stato: '', stallo: '', anomalia: false, aperto: false },
       dipendenti: { q: '' }
@@ -1115,23 +1319,101 @@ const S = {
       con CODE-17B, insieme alla UI che permette di scegliere un turno.
       Attivarlo prima farebbe sparire dalla mappa tutte le prenotazioni
       esistenti, che hanno turnoId === null. */
-  turnoCompatibile(prenotazione) {
+  turnoCompatibile(prenotazione, turnoId) {
     if (AppState.config.modalitaPrenotazione !== 'turni') return true;
-    return true;   // STUB CODE-17A — non filtrare finche' la UI non esiste
+    /* Una prenotazione senza turno e' GIORNALIERA: occupa lo stallo per tutta
+       la giornata, quindi in ogni turno. E' cio' che rende non distruttivo il
+       passaggio a 'turni' su dati creati in modalita' giornaliera. */
+    if (!prenotazione.turnoId) return true;
+    if (!turnoId) return true;
+    return prenotazione.turnoId === turnoId;
   },
 
-  statoStallo(stalloId, dataISO) {
+  /** Il turno di riferimento per la mappa: quello scelto dal FM, altrimenti
+      quello attivo adesso. */
+  turnoAttivoMappa() {
+    const sel = AppState.ui.mappaTurnoId;
+    return (sel && S.turno(sel)) || S.turnoCorrente();
+  },
+
+  /** Minuti dalla mezzanotte di un 'HH:MM'. */
+  minutiDa(hhmmStr) {
+    const [h, m] = String(hhmmStr || '0:0').split(':').map(Number);
+    return (h || 0) * 60 + (m || 0);
+  },
+
+  /** Distanza in minuti fra due istanti della giornata, tenendo conto che il
+      giorno e' circolare: fra 23:50 e 00:10 ci sono 20 minuti, non 1420. */
+  distanzaCircolare(a, b) {
+    const d = Math.abs(a - b) % 1440;
+    return Math.min(d, 1440 - d);
+  },
+
+  /** true se ADESSO (o all'ora passata) si e' dentro la finestra di cambio
+      consegne su questo stallo: si e' a +/- tolleranza da un confine fra due
+      turni E lo stallo e' prenotato in ENTRAMBI i turni coinvolti.
+      Senza la seconda condizione ogni stallo diventerebbe giallo due volte al
+      giorno, anche quando non c'e' nessun passaggio di consegne. */
+  cambioTurnoInCorso(stalloId, dataISO, quando) {
+    if (AppState.config.modalitaPrenotazione !== 'turni') return false;
+    const turni = AppState.config.turni || [];
+    if (turni.length < 2) return false;
+    const toll = AppState.config.tolleranzaCambioTurnoMin || 0;
+    if (!toll) return false;
+    const daData = (d) => d.getHours() * 60 + d.getMinutes();
+    const ora = (quando === undefined || quando === null) ? daData(new Date())
+      : (quando instanceof Date ? daData(quando) : Number(quando));
+    const data = dataISO || OGGI_ISO;
+    const prenotato = (tid) => AppState.prenotazioni.some(p =>
+      p.stalloId === stalloId && p.data === data && p.tipo === 'ufficio'
+      && p.stato === 'attiva' && p.turnoId === tid);
+    return turni.some(t => {
+      const confine = S.minutiDa(t.inizio);
+      if (S.distanzaCircolare(ora, confine) > toll) return false;
+      /* il turno che finisce su questo confine */
+      const uscente = turni.find(x => S.minutiDa(x.fine) === confine);
+      return !!uscente && uscente.id !== t.id && prenotato(uscente.id) && prenotato(t.id);
+    });
+  },
+
+  /** KPI per turno di un giorno: prenotati, liberi, % occupazione. */
+  kpiPerTurno(giornoIso) {
+    const data = giornoIso || OGGI_ISO;
+    const totale = AppState.stalli.length;
+    return (AppState.config.turni || []).map(t => {
+      const prenotati = AppState.prenotazioni.filter(p =>
+        p.data === data && p.stato === 'attiva' && p.tipo === 'ufficio'
+        && p.stalloId && p.turnoId === t.id).length;
+      const liberi = AppState.stalli.filter(s => S.statoStallo(s.id, data, t.id).stato === 'libero').length;
+      const occupati = totale - liberi;
+      return {
+        turno: t, turnoId: t.id, label: t.label, orario: t.inizio + '–' + t.fine,
+        prenotati, liberi, totale, occupati,
+        perc: totale ? Math.round(occupati / totale * 100) : 0
+      };
+    });
+  },
+
+  statoStallo(stalloId, dataISO, turnoId) {
     const st = S.stallo(stalloId);
     if (!st) return { stato: 'libero', cls: 'ms-free', label: 'Libero' };
     const data = dataISO || OGGI_ISO;
     const oggi = data === OGGI_ISO;
+    /* In 'giornaliera' resta undefined e nessun filtro si attiva.
+       In 'turni' senza turno esplicito si guarda il turno attivo adesso. */
+    const tid = AppState.config.modalitaPrenotazione === 'turni'
+      ? (turnoId || (S.turnoCorrente() || {}).id) : undefined;
 
     if (st.tipo === 'manutenzione')        return { ...STATO_STALLO.manutenzione, stato: 'manutenzione', stalloId };
     if (st.disponibilita === 'bloccato')   return { ...STATO_STALLO.bloccato,     stato: 'bloccato',     stalloId };
 
     /* 1. accesso in corso (solo per oggi) */
     if (oggi) {
-      const acc = AppState.accessi.find(a => a.stalloId === stalloId && a.uscita === null && a.data === data);
+      const acc = AppState.accessi.find(a => a.stalloId === stalloId && a.uscita === null && a.data === data
+        /* un accesso appartiene al turno in cui e' iniziato: senza questo
+           filtro un ingresso del mattino terrebbe rosso lo stallo anche nella
+           vista del turno di notte, annullando la capacita' 3x */
+        && (!tid || !a.ingresso || (S.turnoCorrente(S.minutiDa(a.ingresso)) || {}).id === tid));
       if (acc) {
         const abusivo = acc.stato === 'abusivo';
         return {
@@ -1152,7 +1434,7 @@ const S = {
 
     /* 2. prenotazione attiva del giorno */
     const pre = AppState.prenotazioni.find(p => p.stalloId === stalloId && p.data === data
-      && p.tipo === 'ufficio' && p.stato === 'attiva' && S.turnoCompatibile(p));
+      && p.tipo === 'ufficio' && p.stato === 'attiva' && S.turnoCompatibile(p, tid));
     if (pre) {
       const dip = S.dipendente(pre.dipendenteId);
       return { stato: 'prenotato', cls: 'ms-occ', label: 'Prenotato', occupanteNome: dip ? dip.nomeCompleto : '—', prenotazioneId: pre.id, dipendenteId: pre.dipendenteId, stalloId };
@@ -1164,10 +1446,10 @@ const S = {
   },
 
   /** true se lo stallo è prenotabile da quel dipendente in quella data */
-  stalloPrenotabile(stalloId, dataISO, dipendenteId) {
+  stalloPrenotabile(stalloId, dataISO, dipendenteId, turnoId) {
     const st = S.stallo(stalloId);
     if (!st) return false;
-    if (S.statoStallo(stalloId, dataISO).stato !== 'libero') return false;
+    if (S.statoStallo(stalloId, dataISO, turnoId).stato !== 'libero') return false;
     if (st.tipo === 'visitatori' || st.tipo === 'manutenzione') return false;
     if (st.disponibilita === 'bloccato') return false;
     const dip = S.dipendente(dipendenteId);
@@ -1178,12 +1460,12 @@ const S = {
 
   /** Stallo assegnato automaticamente + PERCHE (RF09).
       Priorita: 1) stallo fisso  2) caratteristica  3) stesso piano  4) primo libero */
-  assegnaStalloConMotivo(dipendenteId, dataISO) {
+  assegnaStalloConMotivo(dipendenteId, dataISO, turnoId) {
     const dip = S.dipendente(dipendenteId);
-    if (dip && dip.stalloId && S.stalloPrenotabile(dip.stalloId, dataISO, dipendenteId)) {
+    if (dip && dip.stalloId && S.stalloPrenotabile(dip.stalloId, dataISO, dipendenteId, turnoId)) {
       return { stalloId: dip.stalloId, motivo: 'fisso' };
     }
-    const candidati = AppState.stalli.filter(s => S.stalloPrenotabile(s.id, dataISO, dipendenteId));
+    const candidati = AppState.stalli.filter(s => S.stalloPrenotabile(s.id, dataISO, dipendenteId, turnoId));
     const preferenza = dip && dip.caratteristica !== 'standard' ? dip.caratteristica : null;
     if (preferenza) {
       const m = candidati.find(s => s.tipo === preferenza);
@@ -1196,8 +1478,8 @@ const S = {
   },
 
   /** wrapper storico: restituisce solo il codice (usato da prenota, segnalazioni, ...) */
-  assegnaStalloAutomatico(dipendenteId, dataISO) {
-    return S.assegnaStalloConMotivo(dipendenteId, dataISO).stalloId;
+  assegnaStalloAutomatico(dipendenteId, dataISO, turnoId) {
+    return S.assegnaStalloConMotivo(dipendenteId, dataISO, turnoId).stalloId;
   },
 
   /** Perche' questo dipendente ha PROPRIO questo stallo.
@@ -1606,8 +1888,10 @@ const S = {
   },
 
   /* ---- stalli selezionabili in un modale ---- */
-  stalliDisponibiliPer(dipendenteId, dataISO) {
-    return AppState.stalli.filter(s => S.stalloPrenotabile(s.id, dataISO || OGGI_ISO, dipendenteId)).map(s => s.id);
+  stalliDisponibiliPer(dipendenteId, dataISO, turnoId) {
+    return AppState.stalli
+      .filter(s => S.stalloPrenotabile(s.id, dataISO || OGGI_ISO, dipendenteId, turnoId))
+      .map(s => s.id);
   }
 };
 
@@ -1877,18 +2161,17 @@ const A = {
   },
 
   /* ---- PRENOTAZIONI ---- */
-  prenota({ dipendenteId, dataISO, tipo, stalloId, creataDa }) {
+  prenota({ dipendenteId, dataISO, tipo, stalloId, creataDa, turnoId }) {
     const esistente = S.prenotazione(dipendenteId, dataISO);
     if (esistente) A.annullaPrenotazione(esistente.id, { silent: true });
-    const spot = tipo === 'ufficio' ? (stalloId || S.assegnaStalloAutomatico(dipendenteId, dataISO)) : null;
+    const spot = tipo === 'ufficio' ? (stalloId || S.assegnaStalloAutomatico(dipendenteId, dataISO, turnoId)) : null;
     if (tipo === 'ufficio' && !spot) { Store.emit('prenotazioni'); return { errore: 'Nessuno stallo disponibile per la data selezionata.' }; }
     const p = {
       id: nextId('PRE'), dipendenteId, data: dataISO, tipo,
       stalloId: spot, stato: 'attiva', checkIn: null, checkOut: null,
       creataDa: creataDa || 'dipendente',
-      /* anche le prenotazioni create a runtime nascono giornaliere: senza
-         questo campo le nuove differirebbero da quelle del seed */
-      turnoId: null
+      /* in modalita' giornaliera resta null, come da CODE-17A */
+      turnoId: turnoId || null
     };
     AppState.prenotazioni.push(p);
     Store.emit('prenotazioni');
@@ -2216,11 +2499,26 @@ const A = {
       turno, cosi' assegnazione dello stallo, sostituzione di una prenotazione
       esistente e chiusura degli accessi restano in un posto solo. */
   prenotaTurno({ dipendenteId, stalloId, giornoIso, turnoId }) {
-    const p = A.prenota({ dipendenteId, dataISO: giornoIso, tipo: 'ufficio', stalloId });
-    if (!p || p.errore) return p;
-    p.turnoId = turnoId || null;
-    Store.emit('prenotazioni');
-    return p;
+    return A.prenota({ dipendenteId, dataISO: giornoIso, tipo: 'ufficio', stalloId, turnoId });
+  },
+
+  /* ---- configurazione dei turni dalla UI ---- */
+  setMappaTurno(turnoId) { AppState.ui.mappaTurnoId = turnoId; Store.emit('nav'); },
+  aggiornaTurno(turnoId, patch) {
+    const t = (AppState.config.turni || []).find(x => x.id === turnoId);
+    if (t) Object.assign(t, patch);
+    Store.emit('config');
+    return t;
+  },
+  aggiungiTurno() {
+    const n = (AppState.config.turni || []).length + 1;
+    AppState.config.turni.push({ id: 'turno-' + nextId('TRN'), label: 'Turno ' + n, inizio: '08:00', fine: '16:00' });
+    Store.emit('config');
+  },
+  rimuoviTurno(turnoId) {
+    AppState.config.turni = (AppState.config.turni || []).filter(t => t.id !== turnoId);
+    if (AppState.ui.mappaTurnoId === turnoId) AppState.ui.mappaTurnoId = null;
+    Store.emit('config');
   },
 
   /* ---- destinatari delle notifiche segnalazioni ---- */
@@ -2309,6 +2607,8 @@ const A = {
       empTipoGiorno: 'ufficio'
     };
     AppState.ui.mapSelection = [];
+    AppState.ui.mappaTurnoId = null;
+    AppState.ui.demoScenario = 'uffici';
     AppState.ui.fmWeekOffset = 0;
     AppState.ui.empWeekOffset = 0;
     AppState.ui.editSede = false;
@@ -2319,6 +2619,47 @@ const A = {
     Store.emit('ripristino');
     return { ok: true, sessioneChiusa: false };
   },
+  /** Sostituisce IN PLACE tutti i dati con quelli di uno scenario.
+      Stessa regola di ripristinaDemo(): AppState non va rimpiazzato, perche'
+      ogni modulo ne tiene un riferimento preso al load. */
+  _caricaScenario(d, scenario) {
+    AppState.zone              = d.zone;
+    AppState.stalli            = d.stalli;
+    AppState.dipendenti        = d.dipendenti;
+    AppState.prenotazioni      = d.prenotazioni;
+    AppState.visitatori        = d.visitatori;
+    AppState.segnalazioni      = d.segnalazioni;
+    AppState.accessi           = d.accessi;
+    AppState.hardware          = d.hardware;
+    AppState.richiestePass     = d.richiestePass;
+    AppState.config            = d.config;
+    AppState.utentiPiattaforma = d.utentiPiattaforma;
+    AppState.utenti.dipendenteDemoId = d.dipendenteDemoId;
+    AppState.ui.demoScenario   = scenario;
+    AppState.ui.filtri = {
+      accessi:    { q: '', tipo: '', stato: '', stallo: '', anomalia: false, aperto: false },
+      dipendenti: { q: '' }
+    };
+    AppState.ui.selezione = {
+      stalloId: null, dipendenteId: null, accessoId: null, visitatoreId: null,
+      segnalazioneId: null, hardwareId: null, richiestaId: null, giornoISO: null,
+      empTipoGiorno: 'ufficio'
+    };
+    AppState.ui.mapSelection = [];
+    AppState.ui.mappaTurnoId = null;
+    AppState.ui.fmWeekOffset = 0;
+    AppState.ui.empWeekOffset = 0;
+    AppState.ui.editSede = false;
+    AppState.ui.attivazione = null;
+    const sopravvive = !!S.utenteCorrente();
+    if (!sopravvive) { A.logout(); return { ok: true, sessioneChiusa: true }; }
+    Store.emit('scenario');
+    return { ok: true, sessioneChiusa: false };
+  },
+
+  attivaDemoOspedale()  { return A._caricaScenario(costruisciDatiOspedale(), 'ospedale'); },
+  ripristinaDemoUffici() { return A._caricaScenario(costruisciDati(), 'uffici'); },
+
   setAnalyticsPeriodo(tipo) { AppState.ui.analyticsPeriodo = tipo; Store.emit('nav'); },
   setPeriodo(tipo) {
     const mappa = {

@@ -39,6 +39,26 @@ global.PC.Sezioni.prenotazioni = {
           </div>`).join('')}
       </div>`;
 
+    /* Tabella capacita': una riga per turno, solo in modalita' turni. */
+    const capacita = State.config.modalitaPrenotazione === 'turni'
+      ? UI.card({
+          titolo: '📊 Capacità per turno — oggi',
+          sub: 'Lo stesso parcheggio, servito più volte nella stessa giornata',
+          stile: 'margin-top:14px',
+          body: UI.tabella({
+            head: ['Turno', 'Orario', 'Prenotati', 'Liberi', '% Occupazione'],
+            rows: S.kpiPerTurno(U.OGGI_ISO).map(k => `<tr>
+              <td><b>${UI.esc(k.label)}</b></td>
+              <td class="mono">${UI.esc(k.orario)}</td>
+              <td>${k.prenotati}</td>
+              <td>${k.liberi}</td>
+              <td><b>${k.perc}%</b></td>
+            </tr>`),
+            vuoto: 'Nessun turno configurato.'
+          })
+        })
+      : '';
+
     return kpi
       + UI.alert(`📅 Finestra di prenotazione: <strong>${finestra} giorni lavorativi</strong> (oggi incluso) — modificabile in <a data-act="nav" data-sezione="config" style="color:inherit;text-decoration:underline;cursor:pointer">Config → Policy</a>`, 'info')
       + UI.card({
@@ -52,7 +72,8 @@ global.PC.Sezioni.prenotazioni = {
             UI.btn('+ Prenota', { azione: 'apri-modale', params: { modale: 'add-bk' }, variante: 'btn-primary' })
           ],
           body: righe.length ? griglia : UI.vuoto('Nessun dipendente corrisponde alla ricerca.')
-        });
+        })
+      + capacita;
   }
 };
 
@@ -65,6 +86,15 @@ function cella(c, dip) {
   }
   if (p.tipo === 'sw') {
     return `<div class="bk-slot s-sw"${UI.act('cella-prenota', params)} title="Smart Working">SW</div>`;
+  }
+  /* In modalita' a turni la cella dice ANCHE quale turno: senza, due
+     prenotazioni sullo stesso stallo nello stesso giorno sarebbero
+     indistinguibili, che e' esattamente cio' che la modalita' introduce. */
+  if (State.config.modalitaPrenotazione === 'turni' && p.turnoId) {
+    const t = S.turno(p.turnoId);
+    const cls = { mattino: 't-mattino', pomeriggio: 't-pomeriggio', notte: 't-notte' }[p.turnoId] || 't-altro';
+    return `<div class="bk-slot s-turno ${cls}"${UI.act('cella-prenota', params)} title="${UI.esc(p.stalloId + ' · ' + (t ? t.label + ' ' + t.inizio + '–' + t.fine : p.turnoId))}">
+      <span class="bk-stallo">${UI.esc(p.stalloId)}</span><span class="bk-turno">${UI.esc(t ? t.label : p.turnoId)}</span></div>`;
   }
   /* violazione: lo stallo prenotato risulta occupato abusivamente */
   const stato = S.statoStallo(p.stalloId, c.iso);

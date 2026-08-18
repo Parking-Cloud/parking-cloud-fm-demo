@@ -30,7 +30,8 @@ stato incoerente. È l'origine di CODE-03.
 | `puoRichiederePass` | topbar `employee/index.js`, colonna Pass vis. in `fm/dipendenti.js`, toggle in `dip-det`, F18 |
 | `richiestePass` (struttura) | `emp-richiedi-pass`, `req-pass`, `creaRichiestaPass`, `approvaRichiestaPass`, `rifiutaRichiestaPass`, sezione "Le mie richieste", F20 |
 | `visitatori.dataFine` | `statoStallo` (range), `creaPassVisitatore` (scelta stallo), F20 |
-| `config.modalitaPrenotazione` / `config.turni` | `turnoCorrente`, `turnoCompatibile`, `statoStallo`, `prenotaTurno` — **CODE-17A e' sola infrastruttura: lo stub in `turnoCompatibile()` deve restare inerte finche' CODE-17B non introduce la UI, altrimenti le prenotazioni con `turnoId: null` spariscono dalla mappa** |
+| `config.modalitaPrenotazione` / `config.turni` | `turnoCorrente`, `turnoCompatibile`, `statoStallo`, `kpiPerTurno`, `cambioTurnoInCorso`, `prenotaTurno`, e le sezioni Mappa / Dashboard / Prenotazioni / Config / `emp-book`. **Ogni ramo nuovo va scritto sotto `if (modalitaPrenotazione === 'turni')`: la modalita' giornaliera non deve cambiare mai** — F22, F23 |
+| `ui.demoScenario` | `attivaDemoOspedale`, `ripristinaDemoUffici`, toggle in Amministrazione. Sostituisce l'intero dataset in place — F24 |
 | `prenotazioni.turnoId` | quattro punti di creazione: `buildPrenotazioni` (x3), `applicaPatternEvidenza`, `prenota()`. Chi aggiunge un campo alla prenotazione deve toccarli tutti |
 | stato di un dipendente (`sospendiDipendente`) | `annullaPrenotazione`, `statoStallo`, `righeSettimanaFM`, `kpiDipendenti`, F19 |
 | `utentiPiattaforma` | `trovaAccountPerEmail`, `utenteCorrente`, `facilityManager`, F12 |
@@ -272,6 +273,57 @@ stato incoerente. È l'origine di CODE-03.
     misura e' priva di senso.
 - **Verifica:** con viewport basso, header e footer dentro lo schermo, corpo
   scrollabile, e un modale corto (es. `emp-profile`) che NON scrolla
+
+## F22 — Modalita' a turni: mappa, KPI, capacita' (CODE-17B)
+
+- **Sorgente:** `fm/mappa.js`, `fm/dashboard.js`, `fm/prenotazioni.js`, `fm/config.js`
+- **Selectors:** `turnoAttivoMappa()`, `kpiPerTurno()`, `statoStallo(id, data, turnoId)`, `cambioTurnoInCorso()`
+- **Actions:** `setModalitaPrenotazione()`, `setMappaTurno()`, `aggiungiTurno()`, `rimuoviTurno()`, `aggiornaTurno()`, `setTolleranzaCambioTurno()`
+- **Da sapere:**
+  - `statoStallo()` ha un **terzo parametro** `turnoId`. In giornaliera resta
+    `undefined` e il comportamento e' quello storico. Chi aggiunge una chiamata
+    in una vista per-turno deve passarlo, altrimenti legge il turno corrente.
+  - Una prenotazione con `turnoId: null` e' **giornaliera** e occupa lo stallo
+    in ogni turno. E' cio' che rende sicuro attivare i turni su dati vecchi.
+  - Anche il ramo **accessi** di `statoStallo()` filtra per turno: un ingresso
+    del mattino non deve tenere occupato lo stallo nella vista della notte.
+  - Il **giallo** (`ms-cambio`) non e' "siamo vicini a un confine": serve anche
+    che lo stallo sia prenotato in entrambi i turni a cavallo. Senza quella
+    condizione mezza mappa diventerebbe gialla due volte al giorno.
+- **Verifica:** selettore turni presente solo in modalita' turni · KPI
+  "Liberi turno X" · tabella capacita' coerente con `kpiPerTurno()` · legenda
+  con "Cambio turno" · in giornaliera nessuno di questi elementi esiste
+
+## F23 — Prenotazione per turno (dipendente) (CODE-17B)
+
+- **Sorgente:** `modals.js → emp-book`, `employee/index.js` (`emp-sel-turno`, `emp-conferma`)
+- **Selectors:** `stalliDisponibiliPer(dip, data, turnoId)`, `assegnaStalloConMotivo(dip, data, turnoId)`
+- **Da sapere:**
+  - L'ordine e' **turno prima, stallo dopo**: la disponibilita' dipende dal
+    turno, quindi mostrare uno stallo prima della scelta sarebbe una bugia.
+  - La conferma resta disabilitata finche' non c'e' un turno con almeno uno
+    stallo libero; l'handler ricontrolla comunque il turno.
+  - Il turno va propagato fino a `prenota()`: se si ferma prima, la
+    prenotazione nasce con `turnoId: null` e occupa la giornata intera.
+- **Verifica:** card con posti e stato Disponibile/Esaurito · stallo assegnato
+  col motivo · nota tolleranza · calendario e griglia FM con `[stallo] · [turno]`
+
+## F24 — Scenario demo Uffici / Ospedale (CODE-17B)
+
+- **Sorgente:** `fm/amministrazione.js` → `set-scenario`
+- **Actions:** `attivaDemoOspedale()`, `ripristinaDemoUffici()`, `_caricaScenario()`
+- **Da sapere:**
+  - Sostituisce **tutto** il dataset in place (stessa regola di
+    `ripristinaDemo()`): `AppState` non va rimpiazzato.
+  - Lo scenario ospedale porta con se' `modalitaPrenotazione: 'turni'`: e' il
+    modo piu' rapido di mostrare i turni senza configurare nulla a mano.
+  - `buildAccessi()` **non** e' riusabile: genera tutti gli ingressi in fascia
+    mattutina e le tre persone dello stallo vetrina risulterebbero dentro
+    insieme. Serve `buildAccessiOspedale()`.
+  - Il ritorno a "Uffici" deve lasciare **zero residui**: nessun dipendente con
+    `ruolo` sanitario, nessuna prenotazione con `turnoId`.
+- **Verifica:** sede, 20 vs 312 dipendenti, A-07 occupato nei 3 turni da 3
+  persone diverse, e al ritorno 156/25/129 come da baseline
 
 ## F12 — Login Admin → accesso Amministrazione
 

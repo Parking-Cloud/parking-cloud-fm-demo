@@ -594,6 +594,34 @@ Modals.register('emp-book', {
     if (!dip) return UI.alert('Sessione non valida per la Vista Dipendente.', 'warn');
     const pre = S.prenotazione(dip.id, c.giornoISO);
     const tipo = f('tipo', 'ufficio');
+    /* Modalita' a turni: PRIMA si sceglie il turno, poi il sistema assegna.
+       Finche' non e' scelto non ha senso mostrare uno stallo, perche' la
+       disponibilita' dipende dal turno. */
+    if (State.config.modalitaPrenotazione === 'turni' && tipo === 'ufficio') {
+      const turnoSel = f('turnoId', '');
+      const cards = (State.config.turni || []).map(t => {
+        const liberi = S.stalliDisponibiliPer(dip.id, c.giornoISO, t.id).length;
+        const pieno = liberi === 0;
+        return `<div class="turno-card${turnoSel === t.id ? ' active' : ''}${pieno ? ' pieno' : ''}"${pieno ? '' : UI.act('emp-sel-turno', { turnoId: t.id })}>
+          <div class="turno-card-hd">
+            <div class="turno-card-lbl">${UI.esc(t.label)}</div>
+            ${UI.badge(pieno ? 'Esaurito' : 'Disponibile', pieno ? 'red' : 'green')}
+          </div>
+          <div class="turno-card-ora mono">${UI.esc(t.inizio)} – ${UI.esc(t.fine)}</div>
+          <div class="turno-card-posti">${liberi} post${liberi === 1 ? 'o' : 'i'} disponibil${liberi === 1 ? 'e' : 'i'}</div>
+        </div>`;
+      }).join('');
+      const auto = turnoSel ? S.assegnaStalloConMotivo(dip.id, c.giornoISO, turnoSel) : null;
+      return (pre ? UI.alert('Hai già una prenotazione per questo giorno: confermando verrà sostituita.', 'warn') : '')
+        + `<div class="form-label" style="margin-bottom:8px">Seleziona il tuo turno</div>
+           <div class="turni-cards">${cards}</div>`
+        + (auto && auto.stalloId
+            ? UI.alert(`Stallo assegnato: <strong>${UI.esc(auto.stalloId)}</strong> — ${UI.esc(S.motivoAssegnazione(auto.motivo))}.`, 'info')
+              + `<div class="form-hint">Il tuo turno include ±${State.config.tolleranzaCambioTurnoMin} min di tolleranza per il cambio consegne</div>`
+            : turnoSel
+              ? UI.alert('Nessuno stallo disponibile in questo turno.', 'danger')
+              : `<div class="form-hint">Scegli un turno per vedere lo stallo che ti verrà assegnato.</div>`);
+    }
     const stallo = f('stallo') || S.assegnaStalloAutomatico(dip.id, c.giornoISO);
     const st = stallo ? S.stallo(stallo) : null;
 
@@ -632,6 +660,13 @@ Modals.register('emp-book', {
     if (!dip) return chiudi('Chiudi');
     const pre = S.prenotazione(dip.id, c.giornoISO);
     const tipo = f('tipo', 'ufficio');
+    if (State.config.modalitaPrenotazione === 'turni' && tipo === 'ufficio') {
+      const turnoSel = f('turnoId', '');
+      const auto = turnoSel ? S.assegnaStalloConMotivo(dip.id, c.giornoISO, turnoSel) : null;
+      return chiudi() + UI.btn('Conferma prenotazione', {
+        azione: 'emp-conferma', params: { giornoIso: c.giornoISO },
+        variante: 'btn-primary', sm: false, disabled: !(auto && auto.stalloId) });
+    }
     return (pre ? UI.btn('Cancella prenotazione', { azione: 'emp-cancella', params: { giornoIso: c.giornoISO }, variante: 'btn-danger', sm: false }) : chiudi())
       + ok(tipo === 'sw' ? '✓ Dichiara Smart Working' : '✓ Conferma prenotazione', 'emp-conferma', { giornoIso: c.giornoISO });
   }

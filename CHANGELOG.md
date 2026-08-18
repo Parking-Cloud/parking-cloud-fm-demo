@@ -68,6 +68,83 @@ Generati da PRNG con seed fisso `20260817`: **stabili a ogni reload**.
 
 ## STORICO MODIFICHE
 
+## [18/08/2026] — CODE-17B · UI modalità a turni + scenario ospedale
+> `giornaliera` resta il default e il comportamento invariato: la modalità a
+> turni è **addizione pura**, visibile solo quando è attiva.
+
+### Aggiunto
+- `fm/config.js` tab Policy: sezione **Modalità Prenotazione** in cima, toggle
+  Giornaliera / Per turni. Con "Per turni" compaiono i turni configurabili
+  (label, ora inizio, ora fine, rimozione, "+ Aggiungi turno") e lo slider di
+  tolleranza 0–60 min. In giornaliera si vede **solo il toggle**.
+- `fm/mappa.js`: selettore orizzontale dei turni sopra la legenda, KPI
+  "Liberi turno X: n/156", tile colorate per il turno selezionato e classe
+  `ms-cambio` (gialla) durante il passaggio di consegne. Legenda estesa.
+- `fm/dashboard.js`: riga "Turno attivo: Mattino · 07:00–15:00" sotto il
+  timestamp; la mini-mappa segue il turno corrente.
+- `fm/prenotazioni.js`: celle con `[stallo] · [turno]` e colore per turno
+  (blu / verde / viola), più la tabella **"Capacità per turno — oggi"**
+  (Turno · Orario · Prenotati · Liberi · % Occupazione).
+- `modals.js → emp-book`: in modalità turni la scelta del turno viene **prima**
+  dello stallo — card con orario, posti disponibili e stato
+  Disponibile/Esaurito; poi lo stallo assegnato col motivo e la nota sui
+  ±30 min di tolleranza. La conferma resta disabilitata finché non c'è un turno.
+- `employee/index.js`: handler `emp-sel-turno`, turno propagato a `prenota()`,
+  ed etichetta `[stallo] · [turno]` nel calendario e in "Le mie prenotazioni".
+- `state.js`: `buildDipendentiOspedale()`, `buildPrenotazioniOspedale()`,
+  `buildAccessiOspedale()`, `costruisciDatiOspedale()`, actions
+  `attivaDemoOspedale()` / `ripristinaDemoUffici()` / `_caricaScenario()`,
+  selectors `kpiPerTurno()`, `turnoAttivoMappa()`, `cambioTurnoInCorso()`,
+  `minutiDa()`, `distanzaCircolare()`, actions `setMappaTurno()`,
+  `aggiornaTurno()`, `aggiungiTurno()`, `rimuoviTurno()`.
+- `fm/amministrazione.js`: toggle **Modalità demo: Uffici / Ospedale**.
+- `styles.css`: stili turni, card di scelta, celle colorate, box scenario.
+### Modificato
+- `turnoCompatibile(p, turnoId)`: da stub a filtro reale. **Una prenotazione
+  con `turnoId: null` è giornaliera e occupa lo stallo in ogni turno** — è ciò
+  che rende non distruttivo attivare i turni su dati creati in giornaliera.
+- `statoStallo(stalloId, dataISO, turnoId)`: terzo parametro. In giornaliera
+  resta `undefined` e nulla cambia. Anche il ramo **accessi** è ora filtrato per
+  turno: un ingresso del mattino non tiene più rosso lo stallo nella vista del
+  turno di notte, che altrimenti annullerebbe la capacità 3x.
+- `stalloPrenotabile()`, `assegnaStalloConMotivo()`, `assegnaStalloAutomatico()`,
+  `stalliDisponibiliPer()`, `prenota()`: propagano il turno.
+### Note di progetto
+- **Il giallo non è "siamo vicini a un confine".** `cambioTurnoInCorso()`
+  richiede anche che lo stallo sia prenotato in **entrambi** i turni a cavallo:
+  senza quella condizione ogni stallo diventerebbe giallo due volte al giorno,
+  anche senza alcun passaggio di consegne.
+- Lo scenario ospedale **sostituisce** il dataset in place, con la stessa
+  regola di `ripristinaDemo()`: `AppState` non va rimpiazzato, ogni modulo ne
+  tiene un riferimento preso al load.
+- Nel seed ospedale i nomi sono forzati univoci: su soli 20 dipendenti una
+  collisione è probabile, e due omonimi sullo stallo vetrina renderebbero
+  illeggibile la dimostrazione della capacità 3x.
+- `buildAccessi()` non è riusabile per l'ospedale: genera tutti gli ingressi in
+  fascia mattutina, e le tre persone dello stallo vetrina risulterebbero dentro
+  contemporaneamente. `buildAccessiOspedale()` fa entrare ognuno nel proprio
+  turno e lascia aperto solo l'accesso del turno in corso.
+### Flussi verificati
+- **TEST A (31/31)**: checklist completa in giornaliera + precondizioni —
+  nessun elemento dei turni in nessuna delle 10 sezioni, Policy col solo
+  toggle, `emp-book` senza scelta turno, prenotazioni con `turnoId: null`
+- **TEST B (10/10)**: toggle Ospedale → sede, 20 dipendenti (5/10/5), selettore
+  turni, KPI per turno, Dashboard con turno attivo, celle e tabella capacità.
+  **A-07 occupato in tutti e tre i turni da tre persone diverse**
+- **TEST C (9/9)**: card turni con posti e stato, conferma disabilitata senza
+  turno, stallo assegnato col motivo, nota tolleranza, calendario
+  "A-01 · Mattino", cella FM `t-mattino`
+- **TEST D (10/10)**: 14:45 e 15:15 in tolleranza; 10:00 e 20:00 no; bordi
+  esatti 14:30/15:30 dentro e 14:29/15:31 fuori; uno stallo prenotato in un solo
+  turno non diventa mai giallo; tolleranza 0 disattiva il giallo
+- **TEST E (8/8)**: ritorno a Uffici — sede, 312 dipendenti, 2.071 prenotazioni,
+  **zero residui ospedale** (0 ruoli, 0 reparti, 0 prenotazioni con turno),
+  nessuna UI dei turni, KPI 156/25/129 come da baseline
+### Limiti noti
+- La griglia FM Prenotazioni mostra al massimo 14 dipendenti: con 20 in
+  evidenza, gli ultimi in ordine alfabetico si raggiungono dalla ricerca.
+  Comportamento preesistente, non introdotto qui.
+
 ## [18/08/2026] — CODE-17A · Modalità a turni: sola infrastruttura
 > **Blocco di sola infrastruttura: zero modifiche alla UI.** La modalità
 > `giornaliera` resta il default e il comportamento esistente non cambia in
@@ -570,6 +647,22 @@ prima (3 voci)                          dopo (4 voci)
 ### Flussi verificati
 - F02: prima `A-07 Occupato` con accesso aperto → dopo `A-07 Libero`, accesso
   chiuso, tile `ms-free` nella mappa FM, giorno tornato verde nel calendario
+
+---
+
+## VERIFICA DI REGRESSIONE — 18/08/2026 (dopo CODE-17B)
+
+**TEST A 31 ✅ · TEST B 10 ✅ · TEST C 9 ✅ · TEST D 10 ✅ · TEST E 8 ✅**
+— 68 controlli, 0 ❌, 0 errori in console.
+
+Un ⚠️ intermedio (cella del dipendente non trovata nella griglia FM) era il
+limite delle 14 righe della vista settimanale, non un difetto: ritrovata via
+ricerca, la cella ha la classe `t-mattino` e il testo "A-01 · Mattino".
+
+Nota sul test di CODE-17A "stub inerte": ora **fallisce di proposito**. Quel
+check verificava che il ramo `turni` non filtrasse nulla, ed è esattamente ciò
+che 17B rimuove. Il controllo che conta — baseline di `statoStallo()` in
+modalità giornaliera, 468 combinazioni — resta a **0 differenze**.
 
 ---
 
