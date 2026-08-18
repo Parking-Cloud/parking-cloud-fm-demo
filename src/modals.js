@@ -602,7 +602,10 @@ Modals.register('emp-book', {
       const cards = (State.config.turni || []).map(t => {
         const liberi = S.stalliDisponibiliPer(dip.id, c.giornoISO, t.id).length;
         const pieno = liberi === 0;
-        return `<div class="turno-card${turnoSel === t.id ? ' active' : ''}${pieno ? ' pieno' : ''}"${pieno ? '' : UI.act('emp-sel-turno', { turnoId: t.id })}>
+        /* Anche un turno pieno resta SELEZIONABILE: e' l'unico modo di
+           arrivare alla proposta di lista d'attesa. Prima di CODE-17C era
+           inerte, e la coda risultava irraggiungibile. */
+        return `<div class="turno-card${turnoSel === t.id ? ' active' : ''}${pieno ? ' pieno' : ''}"${UI.act('emp-sel-turno', { turnoId: t.id })}>
           <div class="turno-card-hd">
             <div class="turno-card-lbl">${UI.esc(t.label)}</div>
             ${UI.badge(pieno ? 'Esaurito' : 'Disponibile', pieno ? 'red' : 'green')}
@@ -619,7 +622,19 @@ Modals.register('emp-book', {
             ? UI.alert(`Stallo assegnato: <strong>${UI.esc(auto.stalloId)}</strong> — ${UI.esc(S.motivoAssegnazione(auto.motivo))}.`, 'info')
               + `<div class="form-hint">Il tuo turno include ±${State.config.tolleranzaCambioTurnoMin} min di tolleranza per il cambio consegne</div>`
             : turnoSel
-              ? UI.alert('Nessuno stallo disponibile in questo turno.', 'danger')
+              ? (() => {
+                  /* Turno pieno: invece di un errore secco si offre la coda.
+                     Se la persona e' gia' in lista non si ripropone nulla. */
+                  const t = S.turno(turnoSel);
+                  const gia = S.listaAttesaDipendente(dip.id).find(v =>
+                    v.turnoId === turnoSel && v.giornoIso === c.giornoISO && v.stato === 'in_attesa');
+                  if (gia) return UI.alert(`⏳ Sei già in lista d'attesa per il turno <strong>${UI.esc(t ? t.label : turnoSel)}</strong> di questo giorno.`, 'warn');
+                  return UI.alert(`Turno <strong>${UI.esc(t ? t.label : turnoSel)}</strong> esaurito. Vuoi entrare in lista d'attesa?`, 'warn')
+                    + `<div class="attesa-azioni">
+                        ${UI.btn('No grazie', { azione: 'emp-rifiuta-attesa' })}
+                        ${UI.btn("Sì, mettimi in lista", { azione: 'emp-entra-attesa', params: { turnoId: turnoSel, giornoIso: c.giornoISO }, variante: 'btn-primary' })}
+                      </div>`;
+                })()
               : `<div class="form-hint">Scegli un turno per vedere lo stallo che ti verrà assegnato.</div>`);
     }
     const stallo = f('stallo') || S.assegnaStalloAutomatico(dip.id, c.giornoISO);
@@ -732,6 +747,36 @@ Modals.register('emp-richiedi-pass', {
       + UI.campo('Note per il FM', `<textarea class="form-textarea"${fld('note')} placeholder="Motivo della visita, indicazioni particolari…">${UI.esc(f('note', ''))}</textarea>`);
   },
   footer: () => chiudi() + ok('Invia richiesta', 'emp-invia-richiesta-pass')
+});
+
+/** Coda del turno, vista FM: chi e' in attesa e da quando. */
+Modals.register('lista-attesa', {
+  size: 'modal-lg',
+  titolo: () => '⏳ Lista d\'attesa',
+  body: () => {
+    const voci = S.listaAttesaAperta();
+    if (!voci.length) return UI.vuoto('Nessuno in lista d\'attesa.');
+    return UI.alert('Chi si e\' messo in coda prima compare per primo. Assegnando uno stallo la prenotazione viene creata subito.', 'info')
+      + UI.tabella({
+        head: ['Dipendente', 'Turno', 'Giorno', 'Richiesta', ''],
+        rows: voci.map(v => {
+          const d = S.dipendente(v.dipendenteId);
+          const t = S.turno(v.turnoId);
+          const liberi = S.stalliDisponibiliPer(v.dipendenteId, v.giornoIso, v.turnoId).length;
+          return `<tr>
+            <td><b>${UI.esc(d ? d.nomeCompleto : '—')}</b><div class="muted" style="font-size:11px">${UI.esc(d ? (d.ruoloLabel || d.dipartimento) : '')}</div></td>
+            <td>${UI.esc(t ? t.label : v.turnoId)}<div class="muted mono" style="font-size:11px">${UI.esc(t ? t.inizio + '–' + t.fine : '')}</div></td>
+            <td class="mono">${UI.esc(U.fmtDM(U.fromISO(v.giornoIso)))}</td>
+            <td class="mono">${UI.esc(U.hhmm(new Date(v.dataRichiesta)))}</td>
+            <td>${liberi
+              ? UI.btn('Assegna stallo', { azione: 'assegna-attesa', params: { vociId: v.id }, variante: 'btn-primary' })
+              : '<span class="muted" style="font-size:11px">nessuno stallo libero</span>'}</td>
+          </tr>`;
+        }),
+        vuoto: 'Nessuno in lista d\'attesa.'
+      });
+  },
+  footer: () => chiudi('Chiudi')
 });
 
 Modals.register('emp-profile', {

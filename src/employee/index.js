@@ -165,9 +165,15 @@ function sezioneRichieste(dip) {
   const segnalazioni = S.segnalazioniDipendente(dip.id);
   const nonLette = S.notifichePassNonLette(dip.id).length;
 
+  /* La tab Lista Attesa esiste solo in modalita' turni: in giornaliera la
+     coda non ha senso, perche' non c'e' un turno per cui mettersi in fila. */
+  const perTurni = State.config.modalitaPrenotazione === 'turni';
+  const attesa = perTurni ? S.listaAttesaDipendente(dip.id) : [];
+
   const tabs = `<div class="emp-req-tabs">
     <div class="tab-btn${tab === 'pass' ? ' active' : ''}"${UI.act('emp-richieste-tab', { tab: 'pass' })}>🪪 Pass Visitatori${richieste.length ? ` <span class="emp-req-count">${richieste.length}</span>` : ''}${nonLette ? '<span class="emp-req-dot"></span>' : ''}</div>
     <div class="tab-btn${tab === 'segnalazioni' ? ' active' : ''}"${UI.act('emp-richieste-tab', { tab: 'segnalazioni' })}>🚨 Segnalazioni${segnalazioni.length ? ` <span class="emp-req-count">${segnalazioni.length}</span>` : ''}</div>
+    ${perTurni ? `<div class="tab-btn${tab === 'attesa' ? ' active' : ''}"${UI.act('emp-richieste-tab', { tab: 'attesa' })}>⏳ Lista Attesa${attesa.length ? ` <span class="emp-req-count">${attesa.length}</span>` : ''}</div>` : ''}
   </div>`;
 
   const STATO_PASS = {
@@ -181,7 +187,37 @@ function sezioneRichieste(dip) {
     risolta:     ['Risolta', 'green']
   };
 
-  const corpo = tab === 'pass'
+  const STATO_ATTESA = {
+    in_attesa:  ['In attesa', 'amber'],
+    assegnato:  ['Assegnato', 'green']
+  };
+
+  const corpoAttesa = attesa.length
+    ? attesa.map(v => {
+        const [lbl, col] = STATO_ATTESA[v.stato] || ['—', 'gray'];
+        const t = S.turno(v.turnoId);
+        const pos = v.stato === 'in_attesa'
+          ? S.listaAttesaPerTurno(v.turnoId, v.giornoIso).findIndex(x => x.id === v.id) + 1 : 0;
+        return `<div class="emp-req-card">
+          <div class="emp-req-hd">
+            <div>
+              <div class="emp-req-nome">⏳ Turno ${UI.esc(t ? t.label : v.turnoId)}</div>
+              <div class="emp-req-meta">${UI.esc(t ? t.inizio + '–' + t.fine : '')}${pos ? ' · posizione <strong>' + pos + '</strong> in coda' : ''}</div>
+            </div>
+            ${UI.badge(lbl, col)}
+          </div>
+          <div class="emp-req-date">📅 ${UI.esc(U.fmtMedium(U.fromISO(v.giornoIso)))} · richiesta alle ${UI.esc(U.hhmm(new Date(v.dataRichiesta)))}</div>
+          ${v.stato === 'assegnato' && v.stalloId
+            ? `<div class="emp-code-box">
+                 <span class="emp-code-lbl">Stallo assegnato</span>
+                 <span class="emp-code-val">${UI.esc(v.stalloId)}</span>
+                 <span class="emp-code-note">dalla lista d'attesa</span>
+               </div>` : ''}
+        </div>`;
+      }).join('')
+    : UI.vuoto('Nessuna richiesta inviata');
+
+  const corpo = tab === 'attesa' ? corpoAttesa : tab === 'pass'
     ? (richieste.length
         ? richieste.map(r => {
             const [lbl, col] = STATO_PASS[r.stato] || ['—', 'gray'];
@@ -318,6 +354,18 @@ UI.on('emp-sel-tipo', d => { Modals._collect(); Modals.form.tipo = d.valore; Mod
 /* selezione del turno: stesso schema di emp-sel-tipo, il re-render ricalcola
    lo stallo assegnato perche' la disponibilita' dipende dal turno */
 UI.on('emp-sel-turno', d => { Modals._collect(); Modals.form.turnoId = d.turnoId; Modals._render(); });
+
+UI.on('emp-rifiuta-attesa', () => { Modals._collect(); Modals.form.turnoId = ''; Modals._render(); });
+
+UI.on('emp-entra-attesa', d => {
+  const dip = S.dipendenteCorrente();
+  if (!dip) { UI.toast('Sessione non valida'); return; }
+  const v = A.entraInListaAttesa({ dipendenteId: dip.id, turnoId: d.turnoId, giornoIso: d.giornoIso });
+  if (v.errore) { UI.toast('⚠ ' + v.errore); return; }
+  Modals.close();
+  const t = S.turno(d.turnoId);
+  UI.toast(`⏳ Sei in lista d'attesa per il turno ${t ? t.label : d.turnoId} del ${U.fmtDM(U.fromISO(d.giornoIso))}. Ti notificheremo se si libera uno stallo.`);
+});
 
 UI.on('emp-cambia-stallo', d => {
   const dip = S.dipendenteCorrente();

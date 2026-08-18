@@ -789,8 +789,11 @@ input[type=range]{accent-color:var(--blue)}
   border-radius:var(--r);cursor:pointer;transition:.15s;background:var(--bg-card)}
 .turno-card:hover{border-color:var(--blue)}
 .turno-card.active{border-color:var(--blue);background:var(--blue-light)}
-.turno-card.pieno{opacity:.55;cursor:not-allowed}
-.turno-card.pieno:hover{border-color:var(--border)}
+/* Un turno pieno e' attenuato ma CLICCABILE: selezionandolo si apre la
+   proposta di lista d'attesa. */
+.turno-card.pieno{opacity:.7}
+.turno-card.pieno:hover{border-color:var(--amber)}
+.turno-card.pieno.active{border-color:var(--amber);background:var(--amber-bg)}
 .turno-card-hd{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .turno-card-lbl{font-size:13px;font-weight:700;color:var(--text)}
 .turno-card-ora{font-size:11px;color:var(--text-muted);margin-top:4px}
@@ -803,6 +806,9 @@ input[type=range]{accent-color:var(--blue)}
   letter-spacing:.08em;color:var(--text-muted);margin-bottom:8px}
 .scenario-toggle .modalita-opt{min-width:120px;padding:9px 12px;text-align:center}
 .scenario-nota{font-size:11px;color:var(--text-muted);margin-top:9px;line-height:1.6}
+
+/* ---- Lista d'attesa (CODE-17C) ---- */
+.attesa-azioni{display:flex;gap:8px;justify-content:flex-end;margin-top:10px;flex-wrap:wrap}
 
 </style>
 </head>
@@ -2068,6 +2074,7 @@ function buildSeedOspedale(utenti) {
     segnalazioni: [], accessi,
     hardware: buildHardware(),
     richiestePass: [],
+    listaAttesa: [],
     config,
     /* Admin e FM sono account di PIATTAFORMA, non del singolo parcheggio:
        condivisi per riferimento fra gli scenari. Duplicarli farebbe fallire
@@ -2101,6 +2108,8 @@ function buildSeedUfficio(utenti) {
     hardware: buildHardware(),
     richiestePass: buildRichiestePass(dipendenti),
     config: buildConfig(),
+    /* La lista d'attesa nasce vuota: e' un fatto di esercizio, non di seed. */
+    listaAttesa: [],
     utentiPiattaforma: utenti,
     dipendenteDemoId: dipendenti.find(d => d.utenteDemo).id
   };
@@ -2130,6 +2139,7 @@ const AppState = {
   accessi:           DATI.accessi,
   hardware:          DATI.hardware,
   richiestePass:     DATI.richiestePass,
+  listaAttesa:       DATI.listaAttesa,
   config:            DATI.config,
 
   /* --- identità --- */
@@ -2297,6 +2307,27 @@ const S = {
       const uscente = turni.find(x => S.minutiDa(x.fine) === confine);
       return !!uscente && uscente.id !== t.id && prenotato(uscente.id) && prenotato(t.id);
     });
+  },
+
+  /** Voci di lista d'attesa per un turno di un giorno, dalla piu' vecchia:
+      chi si e' messo in coda prima viene servito prima. */
+  listaAttesaPerTurno(turnoId, giornoIso) {
+    const data = giornoIso || OGGI_ISO;
+    return AppState.listaAttesa
+      .filter(v => v.turnoId === turnoId && v.giornoIso === data && v.stato === 'in_attesa')
+      .sort((a, b) => a.dataRichiesta - b.dataRichiesta);
+  },
+  /** Tutte le voci ancora in attesa, per il badge del FM. */
+  listaAttesaAperta() {
+    return AppState.listaAttesa
+      .filter(v => v.stato === 'in_attesa')
+      .sort((a, b) => a.giornoIso.localeCompare(b.giornoIso) || a.dataRichiesta - b.dataRichiesta);
+  },
+  /** Le voci di un singolo dipendente, per la sua vista. */
+  listaAttesaDipendente(dipendenteId) {
+    return AppState.listaAttesa
+      .filter(v => v.dipendenteId === dipendenteId)
+      .sort((a, b) => b.dataRichiesta - a.dataRichiesta);
   },
 
   /** KPI per turno di un giorno: prenotati, liberi, % occupazione. */
@@ -3425,6 +3456,42 @@ const A = {
     return A.prenota({ dipendenteId, dataISO: giornoIso, tipo: 'ufficio', stalloId, turnoId });
   },
 
+  /* ---- LISTA D'ATTESA (solo modalita' turni) ---- */
+  entraInListaAttesa({ dipendenteId, turnoId, giornoIso }) {
+    if (!dipendenteId || !turnoId || !giornoIso) return { errore: 'Dati incompleti' };
+    /* Una sola voce per persona/turno/giorno: cliccare due volte non deve
+       creare due posizioni in coda. */
+    const gia = AppState.listaAttesa.find(v => v.dipendenteId === dipendenteId
+      && v.turnoId === turnoId && v.giornoIso === giornoIso && v.stato === 'in_attesa');
+    if (gia) return gia;
+    const v = {
+      id: nextId('ATT'),
+      dipendenteId, turnoId, giornoIso,
+      dataRichiesta: Date.now(),
+      stato: 'in_attesa'
+    };
+    AppState.listaAttesa.push(v);
+    Store.emit('lista-attesa');
+    return v;
+  },
+
+  /** Assegna uno stallo a chi e' in coda. Passa da prenotaTurno(): nessuna
+      logica di assegnazione duplicata qui. Se non c'e' nulla di libero la voce
+      resta 'in_attesa' — non si finge un successo. */
+  assegnaStalloDaListaAttesa(listaAttesaId) {
+    const v = AppState.listaAttesa.find(x => x.id === listaAttesaId);
+    if (!v) return { errore: 'Voce non trovata' };
+    if (v.stato !== 'in_attesa') return { errore: 'Voce gia evasa' };
+    const p = A.prenotaTurno({ dipendenteId: v.dipendenteId, giornoIso: v.giornoIso, turnoId: v.turnoId });
+    if (!p || p.errore) return { errore: (p && p.errore) || 'Nessuno stallo disponibile' };
+    v.stato = 'assegnato';
+    v.prenotazioneId = p.id;
+    v.stalloId = p.stalloId;
+    v.assegnatoIlTs = Date.now();
+    Store.emit('lista-attesa');
+    return { ok: true, voce: v, prenotazione: p };
+  },
+
   /* ---- configurazione dei turni dalla UI ---- */
   setMappaTurno(turnoId) { AppState.ui.mappaTurnoId = turnoId; Store.emit('nav'); },
   aggiornaTurno(turnoId, patch) {
@@ -3517,6 +3584,7 @@ const A = {
     AppState.accessi           = d.accessi;
     AppState.hardware          = d.hardware;
     AppState.richiestePass     = d.richiestePass;
+    AppState.listaAttesa       = d.listaAttesa || [];
     AppState.config            = d.config;
     AppState.utentiPiattaforma = d.utentiPiattaforma;
     AppState.utenti.dipendenteDemoId = d.dipendenteDemoId;
@@ -3558,6 +3626,7 @@ const A = {
     AppState.accessi           = d.accessi;
     AppState.hardware          = d.hardware;
     AppState.richiestePass     = d.richiestePass;
+    AppState.listaAttesa       = d.listaAttesa || [];
     AppState.config            = d.config;
     AppState.utentiPiattaforma = d.utentiPiattaforma;
     AppState.utenti.dipendenteDemoId = d.dipendenteDemoId;
@@ -3593,6 +3662,7 @@ const A = {
       prenotazioni: AppState.prenotazioni, visitatori: AppState.visitatori,
       segnalazioni: AppState.segnalazioni, accessi: AppState.accessi,
       hardware: AppState.hardware, richiestePass: AppState.richiestePass,
+      listaAttesa: AppState.listaAttesa,
       config: AppState.config, utentiPiattaforma: AppState.utentiPiattaforma,
       dipendenteDemoId: AppState.utenti.dipendenteDemoId
     });
@@ -4531,7 +4601,10 @@ Modals.register('emp-book', {
       const cards = (State.config.turni || []).map(t => {
         const liberi = S.stalliDisponibiliPer(dip.id, c.giornoISO, t.id).length;
         const pieno = liberi === 0;
-        return `<div class="turno-card${turnoSel === t.id ? ' active' : ''}${pieno ? ' pieno' : ''}"${pieno ? '' : UI.act('emp-sel-turno', { turnoId: t.id })}>
+        /* Anche un turno pieno resta SELEZIONABILE: e' l'unico modo di
+           arrivare alla proposta di lista d'attesa. Prima di CODE-17C era
+           inerte, e la coda risultava irraggiungibile. */
+        return `<div class="turno-card${turnoSel === t.id ? ' active' : ''}${pieno ? ' pieno' : ''}"${UI.act('emp-sel-turno', { turnoId: t.id })}>
           <div class="turno-card-hd">
             <div class="turno-card-lbl">${UI.esc(t.label)}</div>
             ${UI.badge(pieno ? 'Esaurito' : 'Disponibile', pieno ? 'red' : 'green')}
@@ -4548,7 +4621,19 @@ Modals.register('emp-book', {
             ? UI.alert(`Stallo assegnato: <strong>${UI.esc(auto.stalloId)}</strong> — ${UI.esc(S.motivoAssegnazione(auto.motivo))}.`, 'info')
               + `<div class="form-hint">Il tuo turno include ±${State.config.tolleranzaCambioTurnoMin} min di tolleranza per il cambio consegne</div>`
             : turnoSel
-              ? UI.alert('Nessuno stallo disponibile in questo turno.', 'danger')
+              ? (() => {
+                  /* Turno pieno: invece di un errore secco si offre la coda.
+                     Se la persona e' gia' in lista non si ripropone nulla. */
+                  const t = S.turno(turnoSel);
+                  const gia = S.listaAttesaDipendente(dip.id).find(v =>
+                    v.turnoId === turnoSel && v.giornoIso === c.giornoISO && v.stato === 'in_attesa');
+                  if (gia) return UI.alert(`⏳ Sei già in lista d'attesa per il turno <strong>${UI.esc(t ? t.label : turnoSel)}</strong> di questo giorno.`, 'warn');
+                  return UI.alert(`Turno <strong>${UI.esc(t ? t.label : turnoSel)}</strong> esaurito. Vuoi entrare in lista d'attesa?`, 'warn')
+                    + `<div class="attesa-azioni">
+                        ${UI.btn('No grazie', { azione: 'emp-rifiuta-attesa' })}
+                        ${UI.btn("Sì, mettimi in lista", { azione: 'emp-entra-attesa', params: { turnoId: turnoSel, giornoIso: c.giornoISO }, variante: 'btn-primary' })}
+                      </div>`;
+                })()
               : `<div class="form-hint">Scegli un turno per vedere lo stallo che ti verrà assegnato.</div>`);
     }
     const stallo = f('stallo') || S.assegnaStalloAutomatico(dip.id, c.giornoISO);
@@ -4661,6 +4746,36 @@ Modals.register('emp-richiedi-pass', {
       + UI.campo('Note per il FM', `<textarea class="form-textarea"${fld('note')} placeholder="Motivo della visita, indicazioni particolari…">${UI.esc(f('note', ''))}</textarea>`);
   },
   footer: () => chiudi() + ok('Invia richiesta', 'emp-invia-richiesta-pass')
+});
+
+/** Coda del turno, vista FM: chi e' in attesa e da quando. */
+Modals.register('lista-attesa', {
+  size: 'modal-lg',
+  titolo: () => '⏳ Lista d\'attesa',
+  body: () => {
+    const voci = S.listaAttesaAperta();
+    if (!voci.length) return UI.vuoto('Nessuno in lista d\'attesa.');
+    return UI.alert('Chi si e\' messo in coda prima compare per primo. Assegnando uno stallo la prenotazione viene creata subito.', 'info')
+      + UI.tabella({
+        head: ['Dipendente', 'Turno', 'Giorno', 'Richiesta', ''],
+        rows: voci.map(v => {
+          const d = S.dipendente(v.dipendenteId);
+          const t = S.turno(v.turnoId);
+          const liberi = S.stalliDisponibiliPer(v.dipendenteId, v.giornoIso, v.turnoId).length;
+          return `<tr>
+            <td><b>${UI.esc(d ? d.nomeCompleto : '—')}</b><div class="muted" style="font-size:11px">${UI.esc(d ? (d.ruoloLabel || d.dipartimento) : '')}</div></td>
+            <td>${UI.esc(t ? t.label : v.turnoId)}<div class="muted mono" style="font-size:11px">${UI.esc(t ? t.inizio + '–' + t.fine : '')}</div></td>
+            <td class="mono">${UI.esc(U.fmtDM(U.fromISO(v.giornoIso)))}</td>
+            <td class="mono">${UI.esc(U.hhmm(new Date(v.dataRichiesta)))}</td>
+            <td>${liberi
+              ? UI.btn('Assegna stallo', { azione: 'assegna-attesa', params: { vociId: v.id }, variante: 'btn-primary' })
+              : '<span class="muted" style="font-size:11px">nessuno stallo libero</span>'}</td>
+          </tr>`;
+        }),
+        vuoto: 'Nessuno in lista d\'attesa.'
+      });
+  },
+  footer: () => chiudi('Chiudi')
 });
 
 Modals.register('emp-profile', {
@@ -4875,7 +4990,7 @@ global.PC.Modals = Modals;
 ============================================================================ */
 (function (global) {
 'use strict';
-const { UI, Selectors: S, Actions: A, State, Modals, Domini: D } = global.PC;
+const { UI, Selectors: S, Actions: A, State, Modals, Utils: U, Domini: D } = global.PC;
 
 function coloreBarra(perc, colore) {
   if (colore === 'purple') return 'var(--purple)';
@@ -4961,13 +5076,46 @@ global.PC.Sezioni.dashboard = {
     const avviso = per.tipo !== 'oggi'
       ? UI.alert(`📅 Periodo selezionato: <strong>${UI.esc(per.label)}</strong>. La Dashboard mostra sempre lo stato <strong>in tempo reale</strong>; il periodo si applica a <a data-act="nav" data-sezione="accessi" style="color:inherit;text-decoration:underline;cursor:pointer">Accessi</a>, <a data-act="nav" data-sezione="visitatori" style="color:inherit;text-decoration:underline;cursor:pointer">Visitatori</a> e <a data-act="nav" data-sezione="segnalazioni" style="color:inherit;text-decoration:underline;cursor:pointer">Segnalazioni</a>.`, 'info')
       : '';
-    return avviso + miniMappa + kpi + cardSeg;
+    /* Lista d'attesa: esiste solo in modalita' turni, e solo se qualcuno e'
+       davvero in coda. Una card vuota sarebbe rumore. */
+    const inAttesa = State.config.modalitaPrenotazione === 'turni' ? S.listaAttesaAperta() : [];
+    const cardAttesa = inAttesa.length ? UI.card({
+      titolo: '⏳ Lista attesa: ' + inAttesa.length,
+      sub: 'Dipendenti in coda per un turno esaurito',
+      stile: 'margin-top:14px',
+      azioni: [UI.btn('Gestisci coda', { azione: 'apri-modale', params: { modale: 'lista-attesa' }, variante: 'btn-primary' })],
+      body: UI.tabella({
+        head: ['Dipendente', 'Turno richiesto', 'Data richiesta', ''],
+        rows: inAttesa.slice(0, 5).map(v => {
+          const dip = S.dipendente(v.dipendenteId);
+          const t = S.turno(v.turnoId);
+          return `<tr>
+            <td><b>${UI.esc(dip ? dip.nomeCompleto : '—')}</b></td>
+            <td>${UI.esc(t ? t.label : v.turnoId)} <span class="muted mono" style="font-size:11px">${UI.esc(t ? t.inizio + '–' + t.fine : '')}</span></td>
+            <td class="mono">${UI.esc(U.fmtDM(U.fromISO(v.giornoIso)))} · ${UI.esc(U.hhmm(new Date(v.dataRichiesta)))}</td>
+            <td>${UI.btn('Assegna stallo', { azione: 'assegna-attesa', params: { vociId: v.id } })}</td>
+          </tr>`;
+        }),
+        vuoto: 'Nessuno in coda.'
+      })
+    }) : '';
+
+    return avviso + miniMappa + kpi + cardSeg + cardAttesa;
   }
 };
 
 /* ---- handler ---- */
 UI.on('vai-zona', d => { State.ui.selezione.zonaId = d.zonaId; A.vaiA('mappa'); });
 UI.on('apri-seg', d => Modals.open('seg', { segId: d.segId }));
+
+UI.on('assegna-attesa', d => {
+  const v = State.listaAttesa.find(x => x.id === d.vociId);
+  const dip = v ? S.dipendente(v.dipendenteId) : null;
+  const r = A.assegnaStalloDaListaAttesa(d.vociId);
+  if (r.errore) { UI.toast('⚠ ' + r.errore); return; }
+  if (Modals.corrente === 'lista-attesa') Modals.refresh();
+  UI.toast(`✓ ${dip ? dip.nomeCompleto : 'Dipendente'} · stallo ${r.prenotazione.stalloId} assegnato dalla lista d'attesa`);
+});
 
 })(window);
 
@@ -7018,9 +7166,15 @@ function sezioneRichieste(dip) {
   const segnalazioni = S.segnalazioniDipendente(dip.id);
   const nonLette = S.notifichePassNonLette(dip.id).length;
 
+  /* La tab Lista Attesa esiste solo in modalita' turni: in giornaliera la
+     coda non ha senso, perche' non c'e' un turno per cui mettersi in fila. */
+  const perTurni = State.config.modalitaPrenotazione === 'turni';
+  const attesa = perTurni ? S.listaAttesaDipendente(dip.id) : [];
+
   const tabs = `<div class="emp-req-tabs">
     <div class="tab-btn${tab === 'pass' ? ' active' : ''}"${UI.act('emp-richieste-tab', { tab: 'pass' })}>🪪 Pass Visitatori${richieste.length ? ` <span class="emp-req-count">${richieste.length}</span>` : ''}${nonLette ? '<span class="emp-req-dot"></span>' : ''}</div>
     <div class="tab-btn${tab === 'segnalazioni' ? ' active' : ''}"${UI.act('emp-richieste-tab', { tab: 'segnalazioni' })}>🚨 Segnalazioni${segnalazioni.length ? ` <span class="emp-req-count">${segnalazioni.length}</span>` : ''}</div>
+    ${perTurni ? `<div class="tab-btn${tab === 'attesa' ? ' active' : ''}"${UI.act('emp-richieste-tab', { tab: 'attesa' })}>⏳ Lista Attesa${attesa.length ? ` <span class="emp-req-count">${attesa.length}</span>` : ''}</div>` : ''}
   </div>`;
 
   const STATO_PASS = {
@@ -7034,7 +7188,37 @@ function sezioneRichieste(dip) {
     risolta:     ['Risolta', 'green']
   };
 
-  const corpo = tab === 'pass'
+  const STATO_ATTESA = {
+    in_attesa:  ['In attesa', 'amber'],
+    assegnato:  ['Assegnato', 'green']
+  };
+
+  const corpoAttesa = attesa.length
+    ? attesa.map(v => {
+        const [lbl, col] = STATO_ATTESA[v.stato] || ['—', 'gray'];
+        const t = S.turno(v.turnoId);
+        const pos = v.stato === 'in_attesa'
+          ? S.listaAttesaPerTurno(v.turnoId, v.giornoIso).findIndex(x => x.id === v.id) + 1 : 0;
+        return `<div class="emp-req-card">
+          <div class="emp-req-hd">
+            <div>
+              <div class="emp-req-nome">⏳ Turno ${UI.esc(t ? t.label : v.turnoId)}</div>
+              <div class="emp-req-meta">${UI.esc(t ? t.inizio + '–' + t.fine : '')}${pos ? ' · posizione <strong>' + pos + '</strong> in coda' : ''}</div>
+            </div>
+            ${UI.badge(lbl, col)}
+          </div>
+          <div class="emp-req-date">📅 ${UI.esc(U.fmtMedium(U.fromISO(v.giornoIso)))} · richiesta alle ${UI.esc(U.hhmm(new Date(v.dataRichiesta)))}</div>
+          ${v.stato === 'assegnato' && v.stalloId
+            ? `<div class="emp-code-box">
+                 <span class="emp-code-lbl">Stallo assegnato</span>
+                 <span class="emp-code-val">${UI.esc(v.stalloId)}</span>
+                 <span class="emp-code-note">dalla lista d'attesa</span>
+               </div>` : ''}
+        </div>`;
+      }).join('')
+    : UI.vuoto('Nessuna richiesta inviata');
+
+  const corpo = tab === 'attesa' ? corpoAttesa : tab === 'pass'
     ? (richieste.length
         ? richieste.map(r => {
             const [lbl, col] = STATO_PASS[r.stato] || ['—', 'gray'];
@@ -7171,6 +7355,18 @@ UI.on('emp-sel-tipo', d => { Modals._collect(); Modals.form.tipo = d.valore; Mod
 /* selezione del turno: stesso schema di emp-sel-tipo, il re-render ricalcola
    lo stallo assegnato perche' la disponibilita' dipende dal turno */
 UI.on('emp-sel-turno', d => { Modals._collect(); Modals.form.turnoId = d.turnoId; Modals._render(); });
+
+UI.on('emp-rifiuta-attesa', () => { Modals._collect(); Modals.form.turnoId = ''; Modals._render(); });
+
+UI.on('emp-entra-attesa', d => {
+  const dip = S.dipendenteCorrente();
+  if (!dip) { UI.toast('Sessione non valida'); return; }
+  const v = A.entraInListaAttesa({ dipendenteId: dip.id, turnoId: d.turnoId, giornoIso: d.giornoIso });
+  if (v.errore) { UI.toast('⚠ ' + v.errore); return; }
+  Modals.close();
+  const t = S.turno(d.turnoId);
+  UI.toast(`⏳ Sei in lista d'attesa per il turno ${t ? t.label : d.turnoId} del ${U.fmtDM(U.fromISO(d.giornoIso))}. Ti notificheremo se si libera uno stallo.`);
+});
 
 UI.on('emp-cambia-stallo', d => {
   const dip = S.dipendenteCorrente();

@@ -335,6 +335,27 @@ stato incoerente. È l'origine di CODE-03.
 - **Verifica:** sede, 20 vs 312 dipendenti, A-07 occupato nei 3 turni da 3
   persone diverse, e al ritorno 156/25/129 come da baseline
 
+## F25 — Lista d'attesa su turno esaurito (CODE-17C)
+
+- **Sorgente:** `modals.js → emp-book` e `lista-attesa`, `employee/index.js`, `fm/dashboard.js`
+- **Actions:** `entraInListaAttesa()`, `assegnaStalloDaListaAttesa()` → `prenotaTurno()`
+- **Selectors:** `listaAttesaPerTurno()`, `listaAttesaAperta()`, `listaAttesaDipendente()`
+- **Da sapere:**
+  - Esiste **solo in modalita' turni**. In giornaliera non deve comparire da
+    nessuna parte: ne' card FM, ne' terza tab del dipendente.
+  - **La card di un turno pieno deve restare cliccabile.** Renderla inerte
+    (com'era in CODE-17B) rende la coda irraggiungibile: per arrivare alla
+    proposta bisogna poter selezionare proprio il turno esaurito.
+  - `assegnaStalloDaListaAttesa()` non duplica la logica di assegnazione: passa
+    da `prenotaTurno()`. Se non c'e' nulla di libero la voce resta `in_attesa`.
+  - Una sola voce per persona/turno/giorno.
+  - `listaAttesa` fa parte del dataset di scenario: va salvata in
+    `_salvaScenarioCorrente()` e ricaricata in `_caricaScenario()`, altrimenti
+    lo switch la perde.
+- **Verifica:** proposta con due pulsanti · "No grazie" non crea voci ·
+  posizione in coda nella TAB 3 · badge FM "Lista attesa: N" · assegnazione che
+  crea la prenotazione col turno giusto e aggiorna la voce a `assegnato`
+
 ## F12 — Login Admin → accesso Amministrazione
 
 - **Sorgente:** `index.html` (router), `fm/amministrazione.js`

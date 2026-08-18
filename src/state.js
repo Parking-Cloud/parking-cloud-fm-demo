@@ -1170,6 +1170,7 @@ function buildSeedOspedale(utenti) {
     segnalazioni: [], accessi,
     hardware: buildHardware(),
     richiestePass: [],
+    listaAttesa: [],
     config,
     /* Admin e FM sono account di PIATTAFORMA, non del singolo parcheggio:
        condivisi per riferimento fra gli scenari. Duplicarli farebbe fallire
@@ -1203,6 +1204,8 @@ function buildSeedUfficio(utenti) {
     hardware: buildHardware(),
     richiestePass: buildRichiestePass(dipendenti),
     config: buildConfig(),
+    /* La lista d'attesa nasce vuota: e' un fatto di esercizio, non di seed. */
+    listaAttesa: [],
     utentiPiattaforma: utenti,
     dipendenteDemoId: dipendenti.find(d => d.utenteDemo).id
   };
@@ -1232,6 +1235,7 @@ const AppState = {
   accessi:           DATI.accessi,
   hardware:          DATI.hardware,
   richiestePass:     DATI.richiestePass,
+  listaAttesa:       DATI.listaAttesa,
   config:            DATI.config,
 
   /* --- identità --- */
@@ -1399,6 +1403,27 @@ const S = {
       const uscente = turni.find(x => S.minutiDa(x.fine) === confine);
       return !!uscente && uscente.id !== t.id && prenotato(uscente.id) && prenotato(t.id);
     });
+  },
+
+  /** Voci di lista d'attesa per un turno di un giorno, dalla piu' vecchia:
+      chi si e' messo in coda prima viene servito prima. */
+  listaAttesaPerTurno(turnoId, giornoIso) {
+    const data = giornoIso || OGGI_ISO;
+    return AppState.listaAttesa
+      .filter(v => v.turnoId === turnoId && v.giornoIso === data && v.stato === 'in_attesa')
+      .sort((a, b) => a.dataRichiesta - b.dataRichiesta);
+  },
+  /** Tutte le voci ancora in attesa, per il badge del FM. */
+  listaAttesaAperta() {
+    return AppState.listaAttesa
+      .filter(v => v.stato === 'in_attesa')
+      .sort((a, b) => a.giornoIso.localeCompare(b.giornoIso) || a.dataRichiesta - b.dataRichiesta);
+  },
+  /** Le voci di un singolo dipendente, per la sua vista. */
+  listaAttesaDipendente(dipendenteId) {
+    return AppState.listaAttesa
+      .filter(v => v.dipendenteId === dipendenteId)
+      .sort((a, b) => b.dataRichiesta - a.dataRichiesta);
   },
 
   /** KPI per turno di un giorno: prenotati, liberi, % occupazione. */
@@ -2527,6 +2552,42 @@ const A = {
     return A.prenota({ dipendenteId, dataISO: giornoIso, tipo: 'ufficio', stalloId, turnoId });
   },
 
+  /* ---- LISTA D'ATTESA (solo modalita' turni) ---- */
+  entraInListaAttesa({ dipendenteId, turnoId, giornoIso }) {
+    if (!dipendenteId || !turnoId || !giornoIso) return { errore: 'Dati incompleti' };
+    /* Una sola voce per persona/turno/giorno: cliccare due volte non deve
+       creare due posizioni in coda. */
+    const gia = AppState.listaAttesa.find(v => v.dipendenteId === dipendenteId
+      && v.turnoId === turnoId && v.giornoIso === giornoIso && v.stato === 'in_attesa');
+    if (gia) return gia;
+    const v = {
+      id: nextId('ATT'),
+      dipendenteId, turnoId, giornoIso,
+      dataRichiesta: Date.now(),
+      stato: 'in_attesa'
+    };
+    AppState.listaAttesa.push(v);
+    Store.emit('lista-attesa');
+    return v;
+  },
+
+  /** Assegna uno stallo a chi e' in coda. Passa da prenotaTurno(): nessuna
+      logica di assegnazione duplicata qui. Se non c'e' nulla di libero la voce
+      resta 'in_attesa' — non si finge un successo. */
+  assegnaStalloDaListaAttesa(listaAttesaId) {
+    const v = AppState.listaAttesa.find(x => x.id === listaAttesaId);
+    if (!v) return { errore: 'Voce non trovata' };
+    if (v.stato !== 'in_attesa') return { errore: 'Voce gia evasa' };
+    const p = A.prenotaTurno({ dipendenteId: v.dipendenteId, giornoIso: v.giornoIso, turnoId: v.turnoId });
+    if (!p || p.errore) return { errore: (p && p.errore) || 'Nessuno stallo disponibile' };
+    v.stato = 'assegnato';
+    v.prenotazioneId = p.id;
+    v.stalloId = p.stalloId;
+    v.assegnatoIlTs = Date.now();
+    Store.emit('lista-attesa');
+    return { ok: true, voce: v, prenotazione: p };
+  },
+
   /* ---- configurazione dei turni dalla UI ---- */
   setMappaTurno(turnoId) { AppState.ui.mappaTurnoId = turnoId; Store.emit('nav'); },
   aggiornaTurno(turnoId, patch) {
@@ -2619,6 +2680,7 @@ const A = {
     AppState.accessi           = d.accessi;
     AppState.hardware          = d.hardware;
     AppState.richiestePass     = d.richiestePass;
+    AppState.listaAttesa       = d.listaAttesa || [];
     AppState.config            = d.config;
     AppState.utentiPiattaforma = d.utentiPiattaforma;
     AppState.utenti.dipendenteDemoId = d.dipendenteDemoId;
@@ -2660,6 +2722,7 @@ const A = {
     AppState.accessi           = d.accessi;
     AppState.hardware          = d.hardware;
     AppState.richiestePass     = d.richiestePass;
+    AppState.listaAttesa       = d.listaAttesa || [];
     AppState.config            = d.config;
     AppState.utentiPiattaforma = d.utentiPiattaforma;
     AppState.utenti.dipendenteDemoId = d.dipendenteDemoId;
@@ -2695,6 +2758,7 @@ const A = {
       prenotazioni: AppState.prenotazioni, visitatori: AppState.visitatori,
       segnalazioni: AppState.segnalazioni, accessi: AppState.accessi,
       hardware: AppState.hardware, richiestePass: AppState.richiestePass,
+      listaAttesa: AppState.listaAttesa,
       config: AppState.config, utentiPiattaforma: AppState.utentiPiattaforma,
       dipendenteDemoId: AppState.utenti.dipendenteDemoId
     });

@@ -68,6 +68,54 @@ Generati da PRNG con seed fisso `20260817`: **stabili a ogni reload**.
 
 ## STORICO MODIFICHE
 
+## [18/08/2026] — CODE-17C · Lista d'attesa (solo modalità turni)
+> In `giornaliera` la lista d'attesa non esiste da nessuna parte: senza turni
+> non c'è una coda per cui mettersi in fila.
+
+### Aggiunto
+- `state.js`: `AppState.listaAttesa` — voci
+  `{ id, dipendenteId, turnoId, giornoIso, dataRichiesta, stato }`.
+  Presente in entrambi gli scenari, salvata e ripristinata dallo switch.
+- `state.js` Actions: `entraInListaAttesa({dipendenteId, turnoId, giornoIso})` e
+  `assegnaStalloDaListaAttesa(id)`.
+- `state.js` Selectors: `listaAttesaPerTurno(turnoId, giornoIso)` (ordinata per
+  anzianità di richiesta), `listaAttesaAperta()`, `listaAttesaDipendente(id)`.
+- `modals.js → emp-book`: turno esaurito → *"Turno [label] esaurito. Vuoi
+  entrare in lista d'attesa?"* con "No grazie" / "Sì, mettimi in lista".
+- `modals.js`: modale `lista-attesa` per il FM, con "Assegna stallo" per riga.
+- `employee/index.js`: handler `emp-entra-attesa` / `emp-rifiuta-attesa` e
+  **TAB 3 — Lista Attesa** in "Le mie richieste", con stato, orario del turno e
+  **posizione in coda**; quando assegnata mostra lo stallo in evidenza.
+- `fm/dashboard.js`: card **"⏳ Lista attesa: N"** con dipendente, turno e data
+  richiesta, "Assegna stallo" per riga e "Gestisci coda" per il modale.
+### Fix
+- **Un turno esaurito non era selezionabile.** In CODE-17B le card piene erano
+  rese inerti (`pieno ? '' : UI.act(...)`) con `cursor:not-allowed`: la
+  proposta di lista d'attesa era quindi **irraggiungibile**, perché per vederla
+  bisogna poter scegliere proprio il turno pieno. Ora la card resta attenuata
+  ma cliccabile, e da selezionata si colora d'ambra.
+### Note di progetto
+- `assegnaStalloDaListaAttesa()` passa da `prenotaTurno()`: nessuna logica di
+  assegnazione duplicata. **Se non c'è nulla di libero la voce resta
+  `in_attesa`** e il toast lo dice — non si finge un successo.
+- Una sola voce per persona/turno/giorno: cliccare due volte non crea due
+  posizioni in coda, e il modale avverte che si è già in lista.
+- La card in Dashboard compare **solo se qualcuno è davvero in coda**: una card
+  vuota sarebbe rumore in una vista che deve dire cosa succede adesso.
+### Flussi verificati
+- **TEST A 31/31 ✅** — checklist completa in giornaliera. Precondizioni: zero
+  occorrenze di "lista attesa" in tutte e 10 le sezioni FM, e la vista
+  dipendente resta a **2 tab**.
+- **TEST B 19/19 ✅** — turno saturo → proposta → "No grazie" non crea nulla →
+  "Sì" crea la voce con toast → doppio click non duplica → TAB 3 mostra
+  *"posizione 1 in coda"* → FM vede **"Lista attesa: 1"** → senza stalli liberi
+  l'assegnazione fallisce onestamente → liberato uno stallo, "Assegna stallo"
+  crea la prenotazione (*"✓ Alice Negri · stallo A-20 assegnato dalla lista
+  d'attesa"*) → dipendente vede **"Assegnato"** con lo stallo e il calendario
+  mostra *"A-20 · Mattino"*.
+- Isolamento: in uffici la lista sparisce ovunque; tornando in ospedale la voce
+  persiste; `ripristinaDemo()` azzera entrambi gli scenari.
+
 ## [18/08/2026] — CODE-17B rev. · Due scenari coesistenti in memoria
 > Revisione di CODE-17B dopo le risposte alle 5 domande. Punti 1, 2, 4 e 5 erano
 > già conformi; il punto 3 no.

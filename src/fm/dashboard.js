@@ -4,7 +4,7 @@
 ============================================================================ */
 (function (global) {
 'use strict';
-const { UI, Selectors: S, Actions: A, State, Modals, Domini: D } = global.PC;
+const { UI, Selectors: S, Actions: A, State, Modals, Utils: U, Domini: D } = global.PC;
 
 function coloreBarra(perc, colore) {
   if (colore === 'purple') return 'var(--purple)';
@@ -90,12 +90,45 @@ global.PC.Sezioni.dashboard = {
     const avviso = per.tipo !== 'oggi'
       ? UI.alert(`📅 Periodo selezionato: <strong>${UI.esc(per.label)}</strong>. La Dashboard mostra sempre lo stato <strong>in tempo reale</strong>; il periodo si applica a <a data-act="nav" data-sezione="accessi" style="color:inherit;text-decoration:underline;cursor:pointer">Accessi</a>, <a data-act="nav" data-sezione="visitatori" style="color:inherit;text-decoration:underline;cursor:pointer">Visitatori</a> e <a data-act="nav" data-sezione="segnalazioni" style="color:inherit;text-decoration:underline;cursor:pointer">Segnalazioni</a>.`, 'info')
       : '';
-    return avviso + miniMappa + kpi + cardSeg;
+    /* Lista d'attesa: esiste solo in modalita' turni, e solo se qualcuno e'
+       davvero in coda. Una card vuota sarebbe rumore. */
+    const inAttesa = State.config.modalitaPrenotazione === 'turni' ? S.listaAttesaAperta() : [];
+    const cardAttesa = inAttesa.length ? UI.card({
+      titolo: '⏳ Lista attesa: ' + inAttesa.length,
+      sub: 'Dipendenti in coda per un turno esaurito',
+      stile: 'margin-top:14px',
+      azioni: [UI.btn('Gestisci coda', { azione: 'apri-modale', params: { modale: 'lista-attesa' }, variante: 'btn-primary' })],
+      body: UI.tabella({
+        head: ['Dipendente', 'Turno richiesto', 'Data richiesta', ''],
+        rows: inAttesa.slice(0, 5).map(v => {
+          const dip = S.dipendente(v.dipendenteId);
+          const t = S.turno(v.turnoId);
+          return `<tr>
+            <td><b>${UI.esc(dip ? dip.nomeCompleto : '—')}</b></td>
+            <td>${UI.esc(t ? t.label : v.turnoId)} <span class="muted mono" style="font-size:11px">${UI.esc(t ? t.inizio + '–' + t.fine : '')}</span></td>
+            <td class="mono">${UI.esc(U.fmtDM(U.fromISO(v.giornoIso)))} · ${UI.esc(U.hhmm(new Date(v.dataRichiesta)))}</td>
+            <td>${UI.btn('Assegna stallo', { azione: 'assegna-attesa', params: { vociId: v.id } })}</td>
+          </tr>`;
+        }),
+        vuoto: 'Nessuno in coda.'
+      })
+    }) : '';
+
+    return avviso + miniMappa + kpi + cardSeg + cardAttesa;
   }
 };
 
 /* ---- handler ---- */
 UI.on('vai-zona', d => { State.ui.selezione.zonaId = d.zonaId; A.vaiA('mappa'); });
 UI.on('apri-seg', d => Modals.open('seg', { segId: d.segId }));
+
+UI.on('assegna-attesa', d => {
+  const v = State.listaAttesa.find(x => x.id === d.vociId);
+  const dip = v ? S.dipendente(v.dipendenteId) : null;
+  const r = A.assegnaStalloDaListaAttesa(d.vociId);
+  if (r.errore) { UI.toast('⚠ ' + r.errore); return; }
+  if (Modals.corrente === 'lista-attesa') Modals.refresh();
+  UI.toast(`✓ ${dip ? dip.nomeCompleto : 'Dipendente'} · stallo ${r.prenotazione.stalloId} assegnato dalla lista d'attesa`);
+});
 
 })(window);

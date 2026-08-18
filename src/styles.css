@@ -781,8 +781,11 @@ input[type=range]{accent-color:var(--blue)}
   border-radius:var(--r);cursor:pointer;transition:.15s;background:var(--bg-card)}
 .turno-card:hover{border-color:var(--blue)}
 .turno-card.active{border-color:var(--blue);background:var(--blue-light)}
-.turno-card.pieno{opacity:.55;cursor:not-allowed}
-.turno-card.pieno:hover{border-color:var(--border)}
+/* Un turno pieno e' attenuato ma CLICCABILE: selezionandolo si apre la
+   proposta di lista d'attesa. */
+.turno-card.pieno{opacity:.7}
+.turno-card.pieno:hover{border-color:var(--amber)}
+.turno-card.pieno.active{border-color:var(--amber);background:var(--amber-bg)}
 .turno-card-hd{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .turno-card-lbl{font-size:13px;font-weight:700;color:var(--text)}
 .turno-card-ora{font-size:11px;color:var(--text-muted);margin-top:4px}
@@ -795,3 +798,6 @@ input[type=range]{accent-color:var(--blue)}
   letter-spacing:.08em;color:var(--text-muted);margin-bottom:8px}
 .scenario-toggle .modalita-opt{min-width:120px;padding:9px 12px;text-align:center}
 .scenario-nota{font-size:11px;color:var(--text-muted);margin-top:9px;line-height:1.6}
+
+/* ---- Lista d'attesa (CODE-17C) ---- */
+.attesa-azioni{display:flex;gap:8px;justify-content:flex-end;margin-top:10px;flex-wrap:wrap}
