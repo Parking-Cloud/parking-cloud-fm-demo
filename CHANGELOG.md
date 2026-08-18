@@ -20,16 +20,17 @@ Stato del progetto al **18/08/2026**.
 | Visitatori | `fm/visitatori.js` | ✅ pass My2N, revoca, estensione, zona errata |
 | Hardware | `fm/hardware.js` | ✅ 6 dispositivi, 6 tipi, metodi accesso derivati |
 | Policy & Config | `fm/config.js` | ✅ 4 tab interne |
-| Amministrazione | `fm/amministrazione.js` | ✅ solo Admin — utenti piattaforma + parcheggi |
+| Amministrazione | `fm/amministrazione.js` | ✅ solo Admin — utenti piattaforma + parcheggi, modifica sede con conferma sulle riduzioni, ripristino dati demo |
 | Vista Dipendente | `employee/index.js` | ✅ calendario, mappa read-only, prenotazioni |
 
-### Modali registrati — 25 su 25
+### Modali registrati — 28 su 28
 
 `stallo-det` · `acc-det` · `dip-det` · `add-user` · `sblocco` · `dip-pass` ·
 `req-pass` · `add-vis` · `vis-det` · `seg` · `hw` · `add-stallo` · `add-bk` ·
 `policy` · `export` · `daterange` · `emp-book` · `emp-cancel` · `emp-segnala` ·
 `emp-profile` · `emp-history` · `add-platform-user` · `platform-user-det` ·
-`import-dipendenti` · `dip-creato`
+`import-dipendenti` · `dip-creato` · `conferma-riduzione` · `conferma-ripristino` ·
+`emp-richiedi-pass`
 
 Tutti ricevono il contesto dall'elemento cliccato e leggono da `AppState`
 all'apertura: nessun contenuto statico.
@@ -51,7 +52,7 @@ Accesso **invite-only**, nessuna registrazione pubblica; l'attivazione avviene
 da `view-activate` (simulata dai pulsanti "Simula attivazione").
 
 L'unica differenza visibile fra Admin e FM è il badge nel footer sidebar e la
-voce "Amministrazione" (10 voci sidebar vs 9).
+voce "Amministrazione" (11 voci sidebar vs 10).
 
 ### Dati demo
 
@@ -66,6 +67,126 @@ Generati da PRNG con seed fisso `20260817`: **stabili a ogni reload**.
 ---
 
 ## STORICO MODIFICHE
+
+## [18/08/2026] — CODE-15 · Finestra a giorni lavorativi, pass da dipendente, sospensione
+### Aggiunto
+- `state.js`: `isLavorativo(d)` e `giorniLavorativi(da, n)` (esportati in `Utils`).
+  La data di partenza e' un **parametro** e non `OGGI`: e' l'unico modo di
+  verificare il caso "oggi = lunedi'" senza spostare l'orologio del browser.
+- `state.js`: `Selectors.finestraPrenotazione()`, `giorniAnticipo()`,
+  `settimanaEmpOffset(off)`, `settimanaHaGiorniPrenotabili(off)`
+- `state.js`: campo `puoRichiederePass` su ogni dipendente + azioni
+  `togglePuoRichiederePass(id)` e `creaRichiestaPass({...})`
+- `modals.js`: modale `emp-richiedi-pass` (nome, email, azienda, data, ora
+  inizio 09:00, ora fine 18:00, note); toggle "Puo' richiedere pass visitatore"
+  in `dip-det`
+- `fm/dipendenti.js`: colonna **Pass vis.** con toggle per riga
+- `employee/index.js`: pulsante "🪪 Richiedi Pass" in topbar, reso **solo** se
+  `dipendenteCorrente().puoRichiederePass === true`, + handler
+  `emp-invia-richiesta-pass` con validazione di nome ed email
+- `index.html` + `styles.css`: avviso `.login-warn` sotto gli account demo sul
+  limite delle due tab del browser
+### Modificato
+- **Finestra di prenotazione: da settimane a 10 giorni lavorativi**, oggi
+  incluso. `config.prenotazioni.maxBookingWeeks` e' sostituito da
+  `finestraGiorniLavorativi` (default 10). Sabato e domenica non contano.
+- `ultimaDataPrenotabile()` ora e' **inclusiva**: prima era il limite esclusivo
+  `OGGI + N*7`. Chi la confronta deve usare `<=` e non `<` — `setPolicy()` e'
+  stato corretto di conseguenza (`p.data > limite`, non `>=`).
+- `empWeek(delta)`: il limite non e' piu' un contatore di settimane, ma
+  "la settimana di destinazione contiene almeno un giorno prenotabile".
+  Stessa condizione sul `disabled` del pulsante "Succ ›".
+- Chip dipendente: "📅 Prenota fino a **9 giorni lavorativi** in anticipo"
+- Disclaimer FM Prenotazioni: "Finestra di prenotazione: **10 giorni
+  lavorativi** (oggi incluso)"
+- Slider Config → Policy: da 1–4 settimane a **5–20 giorni lavorativi**
+  (step 5). Vedi la nota di scopo qui sotto.
+- `sospendiDipendente()` ritorna `{ dipendente, annullate }` e le prenotazioni
+  future passano da `annullaPrenotazione()` invece di un assegnamento diretto.
+  Toast: "Accesso sospeso per [nome] · N prenotazioni future annullate", oppure
+  "· nessuna prenotazione futura" quando N = 0.
+### Rimosso
+- `modals.js → emp-profile`: campo "No-show". Resta in `dip-det` (vista FM) e
+  nella policy: e' un dato di controllo del FM, non del dipendente.
+### Nota di scopo — lo slider di Config → Policy
+La specifica elencava `state.js` ed `employee/index.js`, ma la finestra non
+dipende piu' da `maxBookingWeeks` e quello slider *pilotava* `maxBookingWeeks`.
+Lasciarlo invariato avrebbe prodotto un controllo che non fa nulla, cioe' un
+downgrade del flusso F11 gia' verificato. E' stato quindi riagganciato al nuovo
+campo. I numeri richiesti dalla specifica restano esatti al valore di default.
+### Nota tecnica — perche' `annullaPrenotazione()` e non `p.stato = 'annullata'`
+`statoStallo()` deriva l'occupazione **anche dagli accessi**. Annullando la
+prenotazione di oggi senza chiudere l'accesso ancora aperto, lo stallo sarebbe
+rimasto rosso in mappa: e' esattamente il bug corretto in CODE-03. Passare per
+`annullaPrenotazione()` eredita quella chiusura invece di riscriverla.
+### Flussi verificati
+- Caso obbligatorio A: partenza lunedi' 24/08 → ultimo giorno utile venerdi'
+  04/09; il lunedi' 07/09 resta fuori finestra; nessun weekend nella finestra
+- Finestra reale (oggi martedi' 18/08): 18–21/08 + 24–28/08 + 31/08 = 10 giorni
+- Passato → "Passato"; futuro fuori finestra → "Non prenotabile", entrambi grigi
+- "Succ ›" arriva all'offset 2 (che contiene il 31/08) e li' si disabilita
+- Restringendo la finestra a 5 giorni, le prenotazioni oltre il nuovo limite
+  vengono annullate e nessuna resta oltre il limite inclusivo
+- Toggle Pass vis. da tabella: cambia lo stato e **non** apre il modale di riga
+- "Richiedi Pass" presente per Matteo Bruni (flag true) e assente per Elena
+  Ricci (flag false); richiesta creata `in_attesa`, visibile nel banner FM e in
+  `req-pass`, approvabile fino alla creazione del pass in Visitatori
+- Caso obbligatorio D: sospensione di Matteo Bruni → toast "3 prenotazioni
+  future annullate", celle della griglia FM vuote da oggi in poi, stallo A-07
+  `ms-free` in mappa, zero accessi aperti residui; caso N = 0 → "nessuna
+  prenotazione futura"
+### Flussi NON verificabili in demo
+- L'invio reale dell'email di richiesta pass al FM: la demo mostra il toast e
+  crea la richiesta in stato `in_attesa`, non esce nulla dal browser.
+
+## [18/08/2026] — CODE-14 · Conferma riduzione posti + Ripristina dati demo
+### Aggiunto
+- `state.js`: `Selectors.anteprimaPosti(target)` — calcolo **puro** di cosa
+  verrebbe rimosso portando i posti a `target`: id degli stalli, numero di
+  prenotazioni coinvolte, zona interessata. Non muta nulla, quindi la stessa
+  funzione serve l'anteprima nel modale e il testo del toast dopo la conferma:
+  i due numeri non possono divergere.
+- `state.js`: `resetGeneratori()` e `costruisciDati()` — la generazione del seed
+  era inline, ora è una funzione richiamabile. `rnd` è passato da `const` a
+  `let`: il ripristino deve poter riavvolgere il PRNG, altrimenti i dati
+  "ripristinati" sarebbero diversi da quelli di partenza.
+- `state.js`: `Actions.ripristinaDemo()` — riporta i dati allo stato iniziale
+  **senza ricaricare la pagina**.
+- `modals.js`: `conferma-riduzione` (anteprima + elenco stalli + alert danger) e
+  `conferma-ripristino` (avviso + riepilogo + nota sulla sessione)
+- `fm/amministrazione.js` tab Parcheggi: box "Ripristina dati demo" + handler
+  `conferma-riduzione-posti` e `conferma-ripristino-demo`
+- `styles.css`: `.ripristino-box`, `.ripristino-nota`
+### Modificato
+- `fm/amministrazione.js → salva-sede`: se `anteprimaPosti()` restituisce stalli
+  da rimuovere apre il modale di conferma **e ritorna senza scrivere**; se il
+  numero sale o resta uguale si applica direttamente, come prima. Nessun percorso
+  distruttivo resta senza conferma, nessun percorso innocuo guadagna un click.
+### Fix
+- **N05 risolto.** Ridurre "Numero posti" in Modifica sede elimina stalli reali e
+  annulla le prenotazioni che ci insistevano. Prima accadeva al primo click, in
+  silenzio: davanti al cliente si perdevano dati senza preavviso e senza modo di
+  tornare indietro. Ora il costo è dichiarato prima ed è annullabile; e se si
+  sbaglia comunque, "Ripristina dati demo" rimette tutto a posto in un click.
+### Note tecniche
+- `ripristinaDemo()` **non sostituisce `AppState`**: lo svuota e lo riempie di
+  nuovo in place. Ogni modulo ne tiene un riferimento preso al load, quindi
+  rimpiazzare l'oggetto lascerebbe le sezioni agganciate a dati morti — il
+  sintomo sarebbe una UI che continua a mostrare i vecchi numeri.
+- La sessione sopravvive al ripristino, **tranne** quando l'utente loggato è
+  stato creato durante la sessione: dopo il reset quell'account non esiste più,
+  e restare "dentro" con un'identità inesistente è peggio che essere rimandati
+  al login. In quel caso `ripristinaDemo()` restituisce `sessioneChiusa: true` e
+  il toast lo spiega.
+### Flussi verificati
+- Aumento posti → applicato senza conferma (nessuna regressione sul percorso
+  non distruttivo)
+- Riduzione 158 → 150: conferma con 8 stalli e 87 prenotazioni; Annulla non
+  tocca nulla; Conferma rimuove esattamente gli stalli previsti, toast coerente,
+  zero prenotazioni orfane, mappa e KPI a 150
+- Ripristino: fingerprint identico al seed, sessione Admin conservata, utenti
+  creati in sessione rimossi, UI ridisegnata senza reload
+- Ripristino da account creato in sessione → sessione chiusa, rilogin OK
 
 ## [18/08/2026] — CODE-13 · Vista Dipendente agganciata all'utente autenticato
 ### Fix (difetto grave: scrittura dati a nome sbagliato)
@@ -331,6 +452,51 @@ prima (3 voci)                          dopo (4 voci)
 
 ---
 
+## VERIFICA DI REGRESSIONE — 18/08/2026 (dopo CODE-15)
+
+Checklist completa sul bundle rigenerato: **60 ✅ · 0 ❌ · 0 ⚠️**, piu' 26
+controlli specifici delle modifiche A–D e della nota di login.
+
+Sette ❌ iniziali erano **artefatti dei test**, non regressioni. Riverificati in
+isolamento: tutti ✅.
+
+| ❌ apparente | Causa reale |
+|-------------|-------------|
+| Giorni fuori finestra senza `data-giorno-iso` | le card non prenotabili non espongono l'attributo perche' **non sono cliccabili**: corretto per design |
+| "Non prenotabile" atteso su ieri | un giorno passato mostra "Passato"; "Non prenotabile" e' il futuro oltre la finestra |
+| Slider Policy senza effetto | nodo **orfano** dopo il re-render: il secondo `value` veniva scritto su un input staccato (N04a) |
+| Prenotazione sul giorno-limite "non sopravvive" | nel seed non esistono prenotazioni oltre la settimana corrente: assert impossibile, riscritto creandone una |
+| "Richiedi Pass" visibile a un non abilitato | la sessione sta in `ui.utenteCorrenteId`, non `ui.utenteId` |
+| Riga del sospeso assente in FM Prenotazioni | la griglia non e' una `<table>`: le righe sono `.bk-row`, non `tbody tr` |
+| Cella ancora occupata dopo la sospensione | e' **lunedi' 17/08, ieri**: la specifica annulla solo `data >= oggi`, lo storico non si riscrive |
+| Stallo del dipendente non evidenziato in mappa | la classe e' `.espot-mine` (non `.mspot`) e si accende solo con una prenotazione per il giorno selezionato: il test aveva appena cancellato quella di oggi |
+
+---
+
+## VERIFICA DI REGRESSIONE — 18/08/2026 (dopo CODE-14)
+
+Checklist completa sul bundle rigenerato: **46 ✅ · 0 ❌ · 0 ⚠️**, più 11
+controlli specifici del blocco (riduzione posti e ripristino) e 5 sul flusso
+Amministrazione.
+
+Quattro ❌ iniziali erano tutti **artefatti del test**, non regressioni:
+
+| ❌ apparente | Causa reale |
+|-------------|-------------|
+| Tabella utenti piattaforma vuota | un check precedente aveva lasciato la tab Amministrazione su *Parcheggi*, che non ha tabella |
+| "+ Aggiungi" non trovato | stessa causa: il pulsante vive nella tab *Utenti* |
+| "Simula attivazione" non trovato | `data-act` reale `simula-attivazione-utente`, non `simula-attivazione` |
+| Fingerprint dopo ripristino diverso | il baseline era stato preso a checklist **già eseguita** (157/315/…): il valore finale `156/312/2071/1400/127/22/2` è esattamente il seed |
+
+Riverificati in isolamento: **tutti ✅**.
+
+> Lezione aggiunta a N04: il form Modifica sede è dietro `toggle-edit-sede` e i
+> suoi campi sono `#sede-nome` / `#sede-indirizzo` / `#sede-posti`, non
+> `data-field`. E lo stato UI (tab attiva, sessione) **persiste fra i check**:
+> un test che non lo reimposta misura la coda del test precedente.
+
+---
+
 ## VERIFICA DI REGRESSIONE — 18/08/2026 (dopo CODE-13)
 
 **48 ✅ · 0 ❌ · 0 ⚠️** sulla checklist completa, piu' 17 controlli specifici
@@ -403,12 +569,12 @@ Zero errori in console.
 
 ## BUG NOTI
 
-Nessun bug funzionale aperto (N06 risolto in CODE-10). Elementi da tenere presenti:
+Nessun bug funzionale aperto (N05 risolto in CODE-14, N06 in CODE-10). Elementi da tenere presenti:
 
 | # | Tipo | Descrizione |
 |---|------|-------------|
 | N01 | Debito lessicale | In `state.js` le zone A/B/C hanno `colore: 'gold'`, residuo della palette precedente. È mappato a `var(--blue)` e **non produce alcun oro a schermo**. Rinominarlo richiede di toccare `dashboard.js → coloreBarra()`, dove il valore fa cadere la mini-mappa sul colore a semaforo. |
 | N02 | Limite noto | La demo è in-memory: ogni reload riparte dal seed. Nessuna persistenza (voluto). |
 | N03 | Limite noto | `dist/parking_cloud_demo.html` dipende da Google Fonts per Nunito. Offline usa il fallback Trebuchet MS. |
-| N04 | Trappola nei test | (a) I nodi DOM raccolti prima di una mutazione diventano orfani: ri-cerca l'elemento a ogni iterazione. (b) Il server locale puo' servire JS **in cache** dopo una modifica: verifica con `fetch(url,{cache:'no-store'})` o rigenera il bundle. (c) `location.reload()` non ricarica lo snapshot `data:` del bundle: lo stato JS sopravvive fra i test. |
-| N05 | Da decidere | "Numero posti" in Modifica sede crea/rimuove stalli reali. Se dovesse essere solo dichiarativo, va cambiato. |
+| N04 | Trappola nei test | (a) I nodi DOM raccolti prima di una mutazione diventano orfani: ri-cerca l'elemento a ogni iterazione. (b) Il server locale puo' servire JS **in cache** dopo una modifica: verifica con `fetch(url,{cache:'no-store'})` o rigenera il bundle. (c) `location.reload()` non ricarica lo snapshot `data:` del bundle: lo stato JS sopravvive fra i test. (d) Lo stato UI (tab attiva, sessione, filtri) **persiste fra un check e il successivo**: reimpostalo, o misuri la coda del test precedente. Non tutti i form usano `data-field` — Modifica sede usa id (`#sede-posti`) ed è dietro `toggle-edit-sede`. (e) Non tutto cio' che sembra una tabella lo e': la griglia FM Prenotazioni usa `.bk-row`, la mappa dipendente `.espot` (non `.mspot`), e le card giorno non prenotabili non hanno `data-giorno-iso` perche' non sono cliccabili. |
+| ~~N05~~ | ✅ Risolto in CODE-14 | "Numero posti" in Modifica sede crea/rimuove stalli reali. Ora la riduzione passa da un modale di conferma con l'anteprima esatta di stalli e prenotazioni impattati, ed è reversibile con "Ripristina dati demo". |

@@ -13,7 +13,7 @@ global.PC.Sezioni.prenotazioni = {
     const isoGiorni = giorni.map(U.toISO);
     const offset = State.ui.fmWeekOffset;
     const k = S.kpiPrenotazioni(isoGiorni.includes(U.OGGI_ISO) ? U.OGGI_ISO : isoGiorni[0]);
-    const settimane = State.config.prenotazioni.maxBookingWeeks;
+    const finestra = State.config.prenotazioni.finestraGiorniLavorativi;
     const righe = S.righeSettimanaFM();
     const q = State.ui.filtri.dipendenti.q;
 
@@ -40,7 +40,7 @@ global.PC.Sezioni.prenotazioni = {
       </div>`;
 
     return kpi
-      + UI.alert(`📅 Finestra di prenotazione configurata: <strong>max ${settimane} settiman${settimane === 1 ? 'a' : 'e'}</strong> in anticipo — modificabile in <a data-act="nav" data-sezione="config" style="color:inherit;text-decoration:underline;cursor:pointer">Config → Policy</a>`, 'info')
+      + UI.alert(`📅 Finestra di prenotazione: <strong>${finestra} giorni lavorativi</strong> (oggi incluso) — modificabile in <a data-act="nav" data-sezione="config" style="color:inherit;text-decoration:underline;cursor:pointer">Config → Policy</a>`, 'info')
       + UI.card({
           titolo: 'Vista Settimanale',
           sub: UI.esc(titolo) + (q ? ` · ricerca "${UI.esc(q)}"` : ' · dipendenti in evidenza'),

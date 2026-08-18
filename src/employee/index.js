@@ -18,7 +18,7 @@ global.PC.Sezioni.dipendenteView = {
        a un utente di piattaforma (o e' incoerente) non si prosegue: meglio un
        messaggio neutro che una vista popolata con dati di un altro. */
     if (!dip) { vistaNonDisponibile(); return; }
-    const settimane = State.config.prenotazioni.maxBookingWeeks;
+    const anticipo = S.giorniAnticipo();
     const giorni = S.settimanaEmp();
     const oggi = new Date();
 
@@ -32,6 +32,7 @@ global.PC.Sezioni.dipendenteView = {
         <small>${UI.esc(State.config.sede.descrizione)}</small>
       </div>
       <div style="display:flex;align-items:center;gap:10px">
+        ${dip.puoRichiederePass ? UI.btn('🪪 Richiedi Pass', { azione: 'apri-modale', params: { modale: 'emp-richiedi-pass' } }) : ''}
         ${UI.btn('🚨 Segnala', { azione: 'apri-modale', params: { modale: 'emp-segnala' } })}
         <div class="emp-av" data-act="apri-modale" data-modale="emp-profile" title="Profilo">${UI.esc(dip.iniziali)}</div>
         ${UI.btn('⏻', { azione: 'logout', sm: false, stile: 'padding:7px 10px;font-size:14px', titolo: 'Esci' })}
@@ -50,7 +51,7 @@ global.PC.Sezioni.dipendenteView = {
             ${segnalazioniMie.length
               ? UI.badge(segnalazioniMie.length + ' segnalazione' + (segnalazioniMie.length > 1 ? 'i' : '') + ' in corso', 'amber')
               : UI.badge('Nessuna segnalazione attiva', 'green', true)}
-            <div class="booking-window-chip">📅 Prenota fino a <strong>${settimane} settiman${settimane === 1 ? 'a' : 'e'}</strong> in anticipo</div>
+            <div class="booking-window-chip">📅 Prenota fino a <strong>${anticipo} giorn${anticipo === 1 ? 'o' : 'i'} lavorativ${anticipo === 1 ? 'o' : 'i'}</strong> in anticipo</div>
           </div>
         </div>
         <div style="text-align:right">
@@ -69,7 +70,7 @@ global.PC.Sezioni.dipendenteView = {
           <span>${U.fmtDM(giorni[0])} – ${U.fmtDM(giorni[4])}</span>
         </div>
         ${UI.btn('‹ Prec', { azione: 'week-emp', params: { delta: -1 }, disabled: off <= 0 })}
-        ${UI.btn('Succ ›', { azione: 'week-emp', params: { delta: 1 }, disabled: off >= settimane - 1 })}
+        ${UI.btn('Succ ›', { azione: 'week-emp', params: { delta: 1 }, disabled: !S.settimanaHaGiorniPrenotabili(off + 1) })}
       </div>`;
 
     /* ---- GRIGLIA GIORNI ---- */
@@ -198,6 +199,26 @@ function cardGiorno(g, dip) {
 
 /* ---- handler ---------------------------------------------------------- */
 UI.on('week-emp', d => A.empWeek(parseInt(d.delta, 10)));
+
+UI.on('emp-invia-richiesta-pass', () => {
+  Modals._collect();
+  const dip = S.dipendenteCorrente();
+  if (!dip) { UI.toast('Sessione non valida'); return; }
+  /* Doppia guardia: il pulsante non c'e' per chi non e' abilitato, ma
+     l'azione e' comunque raggiungibile da console. */
+  if (!dip.puoRichiederePass) { UI.toast('Non sei abilitato a richiedere pass visitatore'); return; }
+  const fm = Modals.form;
+  if (!(fm.visitatoreNome || '').trim())  { UI.toast('Il nome del visitatore è obbligatorio'); return; }
+  if (!(fm.visitatoreEmail || '').trim()) { UI.toast('L\'email del visitatore è obbligatoria'); return; }
+  A.creaRichiestaPass({
+    dipendenteId: dip.id,
+    visitatoreNome: fm.visitatoreNome, visitatoreEmail: fm.visitatoreEmail,
+    azienda: fm.azienda, data: fm.data,
+    oraInizio: fm.oraInizio, oraFine: fm.oraFine, note: fm.note
+  });
+  Modals.close();
+  UI.toast('📨 Richiesta inviata al Facility Manager');
+});
 
 UI.on('emp-apri-giorno', d => {
   State.ui.selezione.giornoISO = d.giornoIso;

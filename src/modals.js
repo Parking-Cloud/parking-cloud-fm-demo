@@ -189,6 +189,8 @@ Modals.register('dip-det', {
       ])}
       ${UI.setting('Metodo accesso', '', UI.select([{ v: 'app2n', l: 'App + 2N' }, { v: 'app', l: 'Solo App' }, { v: 'sospeso', l: 'Sospeso' }], f('metodo'), { stile: 'width:160px' }).replace('<select', '<select' + fld('metodo')))}
       ${UI.setting('Caratteristiche', '', UI.select([{ v: 'standard', l: 'Standard' }, { v: 'ev', l: 'EV ⚡' }, { v: 'disabili', l: 'Disabili ♿' }], f('caratteristica'), { stile: 'width:160px' }).replace('<select', '<select' + fld('caratteristica')))}
+      ${UI.setting('Può richiedere pass visitatore', 'Il dipendente può inoltrare una richiesta di pass; l\'approvazione resta al FM',
+        UI.toggle('toggle-pass-dip', d.puoRichiederePass, { dipendenteId: d.id }))}
       <div class="sep"></div>
       <div class="form-label" style="margin-bottom:6px">Prossime prenotazioni</div>
       ${prossime.length
@@ -515,7 +517,7 @@ Modals.register('policy', {
   titolo: () => '⚙ Modifica Policy Prenotazioni',
   body: () => `
     <div class="form-grid2">
-      ${UI.campo('Finestra max prenotazione (settimane)', UI.input({ tipo: 'number', valore: f('maxBookingWeeks'), min: 1, max: 4 }).replace('<input', '<input' + fld('maxBookingWeeks')))}
+      ${UI.campo('Finestra prenotazione (giorni lavorativi)', UI.input({ tipo: 'number', valore: f('finestraGiorniLavorativi'), min: 1, max: 20 }).replace('<input', '<input' + fld('finestraGiorniLavorativi')))}
       ${UI.campo('No-show: libera dopo (minuti)', UI.input({ tipo: 'number', valore: f('noShowMinuti'), min: 5, max: 180 }).replace('<input', '<input' + fld('noShowMinuti')))}
       ${UI.campo('Durata max sosta dipendenti (ore)', UI.input({ tipo: 'number', valore: f('durataMaxDipendenteOre'), min: 1, max: 24 }).replace('<input', '<input' + fld('durataMaxDipendenteOre')))}
       ${UI.campo('Notifica sosta prolungata a (ore)', UI.input({ tipo: 'number', valore: f('notificaDurataOre'), min: 1, max: 24 }).replace('<input', '<input' + fld('notificaDurataOre')))}
@@ -665,6 +667,30 @@ Modals.register('emp-segnala', {
   footer: () => chiudi() + UI.btn('Invia Segnalazione', { azione: 'emp-invia-segnalazione', variante: 'btn-danger', sm: false })
 });
 
+/** Richiesta di pass visitatore inoltrata dal dipendente al FM.
+    Visibile solo a chi ha puoRichiederePass: il pulsante che lo apre non viene
+    nemmeno reso agli altri. */
+Modals.register('emp-richiedi-pass', {
+  size: 'modal-lg',
+  initForm: () => ({ data: U.OGGI_ISO, oraInizio: '09:00', oraFine: '18:00' }),
+  titolo: () => '🪪 Richiedi Pass Visitatore',
+  body: () => {
+    const d = S.dipendenteCorrente();
+    if (!d) return UI.alert('Sessione non valida.', 'warn');
+    return UI.alert('La richiesta viene inoltrata al Facility Manager, che la approva o la rifiuta. Il pass non è attivo finché non viene approvato.', 'info')
+      + `<div class="form-grid2">
+        ${UI.campo('Nome visitatore *', UI.input({ placeholder: 'Nome e cognome' }).replace('<input', '<input' + fld('visitatoreNome')))}
+        ${UI.campo('Email visitatore *', UI.input({ tipo: 'email', placeholder: 'nome@azienda.com' }).replace('<input', '<input' + fld('visitatoreEmail')))}
+        ${UI.campo('Azienda', UI.input({ placeholder: 'Azienda di provenienza' }).replace('<input', '<input' + fld('azienda')))}
+        ${UI.campo('Data', UI.input({ tipo: 'date', valore: f('data') }).replace('<input', '<input' + fld('data')))}
+        ${UI.campo('Ora inizio', UI.input({ tipo: 'time', valore: f('oraInizio') }).replace('<input', '<input' + fld('oraInizio')))}
+        ${UI.campo('Ora fine', UI.input({ tipo: 'time', valore: f('oraFine') }).replace('<input', '<input' + fld('oraFine')))}
+      </div>`
+      + UI.campo('Note per il FM', `<textarea class="form-textarea"${fld('note')} placeholder="Motivo della visita, indicazioni particolari…"></textarea>`);
+  },
+  footer: () => chiudi() + ok('Invia richiesta', 'emp-invia-richiesta-pass')
+});
+
 Modals.register('emp-profile', {
   titolo: () => '👤 Il mio profilo',
   body: () => {
@@ -678,7 +704,6 @@ Modals.register('emp-profile', {
       + UI.infoGrid([
         UI.infoBox('Stallo assegnato', d.stalloId ? `${UI.esc(d.stalloId)} · ${UI.esc((S.stallo(d.stalloId) || {}).piano || '')}` : '<span class="muted">Pool rotante</span>'),
         UI.infoBox('Accessi (mese)', d.accessiMese),
-        UI.infoBox('No-show', `<span style="color:var(--${d.noShow ? 'amber' : 'green'})">${d.noShow}</span>`),
         UI.infoBox('Segnalazioni fatte', d.segnalazioniFatte)
       ]);
   },

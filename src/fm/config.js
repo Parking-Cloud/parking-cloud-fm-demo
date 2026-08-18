@@ -116,10 +116,10 @@ function tabPolicy() {
     stile: 'margin-bottom:14px',
     body: [
       UI.setting('Finestra massima prenotazione',
-        `I dipendenti possono prenotare fino a <strong style="color:var(--blue)">${p.maxBookingWeeks} settiman${p.maxBookingWeeks === 1 ? 'a' : 'e'}</strong> in anticipo`,
+        `I dipendenti possono prenotare entro <strong style="color:var(--blue)">${p.finestraGiorniLavorativi} giorni lavorativi</strong> (oggi incluso)`,
         `<div style="display:flex;align-items:center;gap:8px">
-          <input type="range" min="1" max="4" value="${p.maxBookingWeeks}" style="width:80px" data-act="slider-settimane">
-          <span class="mono" style="font-size:11px;color:var(--blue);min-width:22px">${p.maxBookingWeeks}w</span>
+          <input type="range" min="5" max="20" step="5" value="${p.finestraGiorniLavorativi}" style="width:80px" data-act="slider-settimane">
+          <span class="mono" style="font-size:11px;color:var(--blue);min-width:32px">${p.finestraGiorniLavorativi}gg</span>
         </div>`),
       UI.setting('No-show: libera stallo dopo', `${p.noShowMinuti} minuti dal check-in previsto`,
         `<input type="number" class="num-input" value="${p.noShowMinuti}" min="5" max="180" data-act="cfg-noshow">`),
@@ -281,7 +281,7 @@ UI.on('rimuovi-email-notifica', d => {
   UI.toast(`${d.email} rimosso dai destinatari`);
 });
 
-UI.onInput('slider-settimane', (d, ev) => A.setPolicy({ maxBookingWeeks: parseInt(ev.target.value, 10) }));
+UI.onInput('slider-settimane', (d, ev) => A.setPolicy({ finestraGiorniLavorativi: parseInt(ev.target.value, 10) }));
 UI.onChange('cfg-noshow',       (d, ev) => A.setPolicy({ noShowMinuti: parseInt(ev.target.value, 10) || 30 }));
 UI.onChange('cfg-durata',       (d, ev) => A.setPolicy({ durataMaxDipendenteOre: parseInt(ev.target.value, 10) || 10 }));
 UI.onChange('cfg-durata-ev',    (d, ev) => A.setPolicy({ durataMaxEvOre: parseInt(ev.target.value, 10) || 4 }));
@@ -315,7 +315,7 @@ UI.on('salva-policy', () => {
   Modals._collect();
   const fm = Modals.form;
   A.setPolicy({
-    maxBookingWeeks: Math.min(4, Math.max(1, parseInt(fm.maxBookingWeeks, 10) || 1)),
+    finestraGiorniLavorativi: Math.min(20, Math.max(1, parseInt(fm.finestraGiorniLavorativi, 10) || 10)),
     noShowMinuti: parseInt(fm.noShowMinuti, 10) || 30,
     durataMaxDipendenteOre: parseInt(fm.durataMaxDipendenteOre, 10) || 10,
     notificaDurataOre: parseInt(fm.notificaDurataOre, 10) || 8,

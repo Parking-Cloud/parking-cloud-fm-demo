@@ -602,6 +602,10 @@ input[type=range]{accent-color:var(--blue)}
   padding:5px 13px;border-radius:9999px;font-size:11.5px;font-weight:700;cursor:pointer;transition:.15s;
 }
 .demo-accounts-row span:hover{background:#FFFFFF;color:var(--blue)}
+.login-warn{
+  margin-top:12px;padding:9px 12px;border-radius:var(--r-sm);
+  background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.28);
+  color:rgba(255,255,255,.92);font-size:11px;line-height:1.6;text-align:left;max-width:340px}
 
 /* ── BADGE RUOLO ──────────────────────────────────────────────────────── */
 .role-badge{display:inline-block;padding:2px 9px;border-radius:9999px;font-size:10px;font-weight:800;letter-spacing:.04em}
@@ -733,6 +737,9 @@ input[type=range]{accent-color:var(--blue)}
         <span data-act="usa-demo" data-email="manager@demo.parkingcloud.eu">Facility Manager</span>
         <span data-act="usa-demo" data-email="dipendente@demo.parkingcloud.eu">Dipendente</span>
       </div>
+      <!-- Limite strutturale della demo statica: ogni tab ha il proprio
+           AppState in memoria, quindi due tab non si vedono a vicenda. -->
+      <div class="login-warn">⚠️ Per vedere le modifiche in tempo reale tra FM e Dipendente, usa la stessa tab del browser: esegui il login, opera, poi esegui il logout e accedi con l'altro ruolo.</div>
     </div>
 
     <div class="login-footer">
@@ -846,6 +853,17 @@ function getMonday(d) {
   return addDays(r, day === 0 ? -6 : 1 - day);
 }
 function toISO(d)      { const r = new Date(d); return r.getFullYear() + '-' + String(r.getMonth() + 1).padStart(2, '0') + '-' + String(r.getDate()).padStart(2, '0'); }
+/** Lunedi'-venerdi'. Sabato e domenica non contano nella finestra di prenotazione. */
+function isLavorativo(d) { const g = d.getDay(); return g >= 1 && g <= 5; }
+/** I primi `n` giorni lavorativi a partire da `da` INCLUSO.
+    La data di partenza e' un parametro e non OGGI: e' l'unico modo di
+    verificare il caso "oggi = lunedi'" senza spostare l'orologio del browser. */
+function giorniLavorativi(da, n) {
+  const out = [];
+  let d = startOfDay(da);
+  while (out.length < n) { if (isLavorativo(d)) out.push(new Date(d)); d = addDays(d, 1); }
+  return out;
+}
 function fromISO(s)    { const [y, m, g] = s.split('-').map(Number); return new Date(y, m - 1, g); }
 function fmtShort(d)   { return DAYS_IT[d.getDay()] + ' ' + d.getDate(); }
 function fmtMedium(d)  { return DAYS_FULL_IT[d.getDay()] + ' ' + d.getDate() + ' ' + MONTHS_IT[d.getMonth()]; }
@@ -1092,12 +1110,12 @@ const DIPENDENTI_SEED = [
      NB: "Marco Bianchi" è il Facility Manager di piattaforma (vedi
      UTENTI_PIATTAFORMA); il dipendente demo ha un nome diverso per non
      avere due persone omonime con ruoli diversi. */
-  { nome: 'Matteo',   cognome: 'Bruni',    dip: 'Finance',    stallo: 'A-07', caratt: 'standard', utenteDemo: true, email: 'dipendente@demo.parkingcloud.eu' },
-  { nome: 'Laura',    cognome: 'Conti',    dip: 'Design',     stallo: 'B-22', caratt: 'standard' },
+  { nome: 'Matteo',   cognome: 'Bruni',    dip: 'Finance',    stallo: 'A-07', caratt: 'standard', utenteDemo: true, email: 'dipendente@demo.parkingcloud.eu', pass: true },
+  { nome: 'Laura',    cognome: 'Conti',    dip: 'Design',     stallo: 'B-22', caratt: 'standard', pass: true },
   { nome: 'Elena',    cognome: 'Ricci',    dip: 'Marketing',  stallo: 'EV-02', caratt: 'ev' },
   { nome: 'Paolo',    cognome: 'Marini',   dip: 'IT',         stallo: null,   caratt: 'standard', bloccato: { motivo: '3x occupazione abusiva', tipo: 'abusivo', giorniFa: 15 } },
   { nome: 'Anna',     cognome: 'Ferri',    dip: 'Sales',      stallo: null,   caratt: 'standard', bloccato: { motivo: 'Superamento durata max', tipo: 'durata', giorniFa: 21 } },
-  { nome: 'Sara',     cognome: 'Bellotti', dip: 'HR',         stallo: 'B-42', caratt: 'standard' },
+  { nome: 'Sara',     cognome: 'Bellotti', dip: 'HR',         stallo: 'B-42', caratt: 'standard', pass: true },
   { nome: 'Davide',   cognome: 'Neri',     dip: 'Operations', stallo: 'B-15', caratt: 'standard' },
   { nome: 'Giulia',   cognome: 'Moretti',  dip: 'Finance',    stallo: 'H-03', caratt: 'disabili' },
   { nome: 'Luca',     cognome: 'Gatti',    dip: 'IT',         stallo: 'C-14', caratt: 'standard' },
@@ -1143,6 +1161,9 @@ function buildDipendenti(stalli) {
       noShow: 0,
       segnalazioniFatte: 0,
       statoAccount: 'attivo',
+      /* abilitazione a richiedere un pass visitatore: concessa dal FM caso
+         per caso, quindi false per default e true solo dove il seed la dichiara */
+      puoRichiederePass: !!s.pass,
       utenteDemo: !!s.utenteDemo,
       inEvidenza: true
     });
@@ -1180,6 +1201,7 @@ function buildDipendenti(stalli) {
       noShow: rnd() < 0.12 ? rInt(1, 2) : 0,
       segnalazioniFatte: rnd() < 0.1 ? 1 : 0,
       statoAccount: 'attivo',
+      puoRichiederePass: false,
       utenteDemo: false,
       inEvidenza: false
     });
@@ -1638,7 +1660,7 @@ function buildConfig() {
       helpdesk: SEDE.helpdesk
     },
     prenotazioni: {
-      maxBookingWeeks: 1,          // finestra prenotazione dipendente (1–4)
+      finestraGiorniLavorativi: 10, // finestra prenotazione dipendente, in giorni lavorativi (oggi incluso)
       noShowMinuti: 30,
       durataMaxDipendenteOre: 10,
       notificaDurataOre: 8,
@@ -2180,7 +2202,12 @@ const S = {
 
   /* ---- prenotazioni ---- */
   settimanaFM()  { return [0, 1, 2, 3, 4].map(i => addDays(getMonday(addDays(OGGI, AppState.ui.fmWeekOffset * 7)), i)); },
-  settimanaEmp() { return [0, 1, 2, 3, 4].map(i => addDays(getMonday(addDays(OGGI, AppState.ui.empWeekOffset * 7)), i)); },
+  settimanaEmpOffset(off) { return [0, 1, 2, 3, 4].map(i => addDays(getMonday(addDays(OGGI, off * 7)), i)); },
+  settimanaEmp() { return S.settimanaEmpOffset(AppState.ui.empWeekOffset); },
+  /** true se la settimana a quell'offset contiene almeno un giorno prenotabile.
+      Serve al pulsante "Succ >": la finestra non e' piu' un numero intero di
+      settimane, quindi il limite non si puo' piu' derivare da un contatore. */
+  settimanaHaGiorniPrenotabili(off) { return S.settimanaEmpOffset(off).some(g => S.dataPrenotabile(g)); },
 
   prenotazione(dipendenteId, dataISO) {
     return AppState.prenotazioni.find(p => p.dipendenteId === dipendenteId && p.data === dataISO && p.stato !== 'annullata') || null;
@@ -2199,9 +2226,17 @@ const S = {
       .map(d => ({ dipendente: d, celle: giorni.map(iso => ({ iso, prenotazione: S.prenotazione(d.id, iso) })) }));
   },
 
-  /** finestra di prenotazione: ultima data prenotabile (RF02/RF03) */
-  ultimaDataPrenotabile() { return addDays(OGGI, AppState.config.prenotazioni.maxBookingWeeks * 7); },
-  dataPrenotabile(d)      { const g = startOfDay(d); return g >= OGGI && g < S.ultimaDataPrenotabile(); },
+  /** I giorni lavorativi prenotabili, oggi incluso (10 per default). */
+  finestraPrenotazione() { return giorniLavorativi(OGGI, AppState.config.prenotazioni.finestraGiorniLavorativi); },
+  /** Ultima data prenotabile — **inclusiva**. Prima era un limite esclusivo
+      (OGGI + N*7): chi la confronta deve usare <=, non <. */
+  ultimaDataPrenotabile() { const f = S.finestraPrenotazione(); return f[f.length - 1]; },
+  /** Giorni di anticipo dichiarati all'utente: oggi non e' "anticipo". */
+  giorniAnticipo()       { return Math.max(0, AppState.config.prenotazioni.finestraGiorniLavorativi - 1); },
+  dataPrenotabile(d) {
+    const g = startOfDay(d);
+    return isLavorativo(g) && g >= OGGI && g <= S.ultimaDataPrenotabile();
+  },
 
   /* ---- segnalazioni ---- */
   segnalazioniAttive() {
@@ -2439,8 +2474,13 @@ const A = {
   /* ---- navigazione settimane (fix DV09) ---- */
   fmWeek(delta)  { AppState.ui.fmWeekOffset += delta; Store.emit('week'); },
   empWeek(delta) {
-    const max = AppState.config.prenotazioni.maxBookingWeeks - 1;
-    AppState.ui.empWeekOffset = Math.min(Math.max(0, AppState.ui.empWeekOffset + delta), Math.max(0, max));
+    const next = AppState.ui.empWeekOffset + delta;
+    if (next < 0) return;
+    /* In avanti ci si sposta solo se la settimana contiene ancora almeno un
+       giorno prenotabile: con una finestra in giorni lavorativi l'ultima
+       settimana raggiungibile e' quasi sempre parziale. */
+    if (delta > 0 && !S.settimanaHaGiorniPrenotabili(next)) return;
+    AppState.ui.empWeekOffset = next;
     Store.emit('week');
   },
 
@@ -2603,6 +2643,7 @@ const A = {
       bloccoMotivo: null, bloccoTipo: null, bloccoDal: null,
       accessiMese: 0, noShow: 0, segnalazioniFatte: 0,
       statoAccount: 'invito_inviato',
+      puoRichiederePass: false,
       utenteDemo: false, inEvidenza: true
     };
     AppState.dipendenti.push(d);
@@ -2612,14 +2653,31 @@ const A = {
   },
   aggiornaDipendente(id, patch) { const d = S.dipendente(id); if (d) Object.assign(d, patch); Store.emit('dipendenti'); return d; },
 
+  /** Abilita/disabilita un singolo dipendente a richiedere pass visitatore. */
+  togglePuoRichiederePass(id) {
+    const d = S.dipendente(id);
+    if (!d) return null;
+    d.puoRichiederePass = !d.puoRichiederePass;
+    Store.emit('dipendenti');
+    return d;
+  },
+
+  /** Sospende l'accesso e libera il parcheggio da quel dipendente.
+      Ritorna { dipendente, annullate }: il conteggio serve al toast e non ha
+      senso conservarlo sull'anagrafica. */
   sospendiDipendente(id, motivo) {
     const d = S.dipendente(id);
     if (!d) return null;
     Object.assign(d, { stato: 'bloccato', metodoAccesso: 'sospeso', appAttiva: false, bloccoMotivo: motivo || 'Sospensione manuale FM', bloccoTipo: 'manuale', bloccoDal: OGGI_ISO });
-    /* libera le prenotazioni future */
-    AppState.prenotazioni.forEach(p => { if (p.dipendenteId === id && p.data >= OGGI_ISO && p.stato === 'attiva') p.stato = 'annullata'; });
+    /* Le prenotazioni future passano da annullaPrenotazione() e non da un
+       assegnamento diretto: quella funzione chiude anche l'accesso rimasto
+       aperto, senza il quale lo stallo di oggi resterebbe rosso in mappa
+       (e' esattamente il bug corretto in CODE-03). */
+    const future = AppState.prenotazioni.filter(p =>
+      p.dipendenteId === id && p.data >= OGGI_ISO && p.stato === 'attiva');
+    future.forEach(p => A.annullaPrenotazione(p.id, { silent: true }));
     Store.emit('dipendenti');
-    return d;
+    return { dipendente: d, annullate: future.length };
   },
 
   sbloccaDipendente(id, { motivazione, durata }) {
@@ -2672,6 +2730,26 @@ const A = {
     }
     Store.emit('visitatori');
     return v;
+  },
+
+  /** Richiesta di pass inoltrata dal dipendente al FM. Nasce sempre
+      'in_attesa': e' il FM a deciderne l'esito da Dipendenti -> req-pass. */
+  creaRichiestaPass({ dipendenteId, visitatoreNome, visitatoreEmail, azienda, data, oraInizio, oraFine, note }) {
+    const r = {
+      id: nextId('REQ'),
+      dipendenteId,
+      visitatoreNome: (visitatoreNome || '').trim(),
+      visitatoreEmail: (visitatoreEmail || '').trim(),
+      azienda: (azienda || '').trim() || '—',
+      data: data || OGGI_ISO,
+      oraInizio: oraInizio || '09:00',
+      oraFine: oraFine || '18:00',
+      stato: 'in_attesa',
+      note: (note || '').trim()
+    };
+    AppState.richiestePass.push(r);
+    Store.emit('richieste');
+    return r;
   },
 
   approvaRichiestaPass(richiestaId, note) {
@@ -2764,10 +2842,15 @@ const A = {
   /* ---- CONFIG ---- */
   setPolicy(patch) {
     Object.assign(AppState.config.prenotazioni, patch);
-    /* la finestra si è ristretta → annulla le prenotazioni fuori finestra */
+    /* la finestra si è ristretta → annulla le prenotazioni fuori finestra.
+       `limite` e' ora INCLUSIVO: il confronto e' > e non >=. */
     const limite = toISO(S.ultimaDataPrenotabile());
-    AppState.prenotazioni.forEach(p => { if (p.data >= limite && p.stato === 'attiva') p.stato = 'annullata'; });
-    AppState.ui.empWeekOffset = Math.min(AppState.ui.empWeekOffset, Math.max(0, AppState.config.prenotazioni.maxBookingWeeks - 1));
+    AppState.prenotazioni.forEach(p => { if (p.data > limite && p.stato === 'attiva') p.stato = 'annullata'; });
+    /* riporta il dipendente sull'ultima settimana che contiene giorni ancora
+       prenotabili, altrimenti resterebbe su una griglia tutta grigia */
+    while (AppState.ui.empWeekOffset > 0 && !S.settimanaHaGiorniPrenotabili(AppState.ui.empWeekOffset)) {
+      AppState.ui.empWeekOffset--;
+    }
     Store.emit('config');
   },
   setNotifica(chiave, valore) { AppState.config.notifiche[chiave] = valore; Store.emit('config'); },
@@ -2917,7 +3000,8 @@ global.PC.Utils = {
   OGGI, OGGI_ISO,
   startOfDay, addDays, getMonday, toISO, fromISO,
   fmtShort, fmtMedium, fmtDM, hhmm, fmtDurata, fmtMinuti,
-  iniziali, nextId, rInt, toCSV
+  iniziali, nextId, rInt, toCSV,
+  isLavorativo, giorniLavorativi
 };
 global.PC.Domini = { TIPO_STALLO, DISPONIBILITA, STATO_STALLO, METODO_ACCESSO, TIPO_SEGNALAZIONE, DIPARTIMENTI, RUOLI, PERMISSIONS, STATO_ACCOUNT, TIPI_HW };
 
@@ -3376,6 +3460,8 @@ Modals.register('dip-det', {
       ])}
       ${UI.setting('Metodo accesso', '', UI.select([{ v: 'app2n', l: 'App + 2N' }, { v: 'app', l: 'Solo App' }, { v: 'sospeso', l: 'Sospeso' }], f('metodo'), { stile: 'width:160px' }).replace('<select', '<select' + fld('metodo')))}
       ${UI.setting('Caratteristiche', '', UI.select([{ v: 'standard', l: 'Standard' }, { v: 'ev', l: 'EV ⚡' }, { v: 'disabili', l: 'Disabili ♿' }], f('caratteristica'), { stile: 'width:160px' }).replace('<select', '<select' + fld('caratteristica')))}
+      ${UI.setting('Può richiedere pass visitatore', 'Il dipendente può inoltrare una richiesta di pass; l\'approvazione resta al FM',
+        UI.toggle('toggle-pass-dip', d.puoRichiederePass, { dipendenteId: d.id }))}
       <div class="sep"></div>
       <div class="form-label" style="margin-bottom:6px">Prossime prenotazioni</div>
       ${prossime.length
@@ -3702,7 +3788,7 @@ Modals.register('policy', {
   titolo: () => '⚙ Modifica Policy Prenotazioni',
   body: () => `
     <div class="form-grid2">
-      ${UI.campo('Finestra max prenotazione (settimane)', UI.input({ tipo: 'number', valore: f('maxBookingWeeks'), min: 1, max: 4 }).replace('<input', '<input' + fld('maxBookingWeeks')))}
+      ${UI.campo('Finestra prenotazione (giorni lavorativi)', UI.input({ tipo: 'number', valore: f('finestraGiorniLavorativi'), min: 1, max: 20 }).replace('<input', '<input' + fld('finestraGiorniLavorativi')))}
       ${UI.campo('No-show: libera dopo (minuti)', UI.input({ tipo: 'number', valore: f('noShowMinuti'), min: 5, max: 180 }).replace('<input', '<input' + fld('noShowMinuti')))}
       ${UI.campo('Durata max sosta dipendenti (ore)', UI.input({ tipo: 'number', valore: f('durataMaxDipendenteOre'), min: 1, max: 24 }).replace('<input', '<input' + fld('durataMaxDipendenteOre')))}
       ${UI.campo('Notifica sosta prolungata a (ore)', UI.input({ tipo: 'number', valore: f('notificaDurataOre'), min: 1, max: 24 }).replace('<input', '<input' + fld('notificaDurataOre')))}
@@ -3852,6 +3938,30 @@ Modals.register('emp-segnala', {
   footer: () => chiudi() + UI.btn('Invia Segnalazione', { azione: 'emp-invia-segnalazione', variante: 'btn-danger', sm: false })
 });
 
+/** Richiesta di pass visitatore inoltrata dal dipendente al FM.
+    Visibile solo a chi ha puoRichiederePass: il pulsante che lo apre non viene
+    nemmeno reso agli altri. */
+Modals.register('emp-richiedi-pass', {
+  size: 'modal-lg',
+  initForm: () => ({ data: U.OGGI_ISO, oraInizio: '09:00', oraFine: '18:00' }),
+  titolo: () => '🪪 Richiedi Pass Visitatore',
+  body: () => {
+    const d = S.dipendenteCorrente();
+    if (!d) return UI.alert('Sessione non valida.', 'warn');
+    return UI.alert('La richiesta viene inoltrata al Facility Manager, che la approva o la rifiuta. Il pass non è attivo finché non viene approvato.', 'info')
+      + `<div class="form-grid2">
+        ${UI.campo('Nome visitatore *', UI.input({ placeholder: 'Nome e cognome' }).replace('<input', '<input' + fld('visitatoreNome')))}
+        ${UI.campo('Email visitatore *', UI.input({ tipo: 'email', placeholder: 'nome@azienda.com' }).replace('<input', '<input' + fld('visitatoreEmail')))}
+        ${UI.campo('Azienda', UI.input({ placeholder: 'Azienda di provenienza' }).replace('<input', '<input' + fld('azienda')))}
+        ${UI.campo('Data', UI.input({ tipo: 'date', valore: f('data') }).replace('<input', '<input' + fld('data')))}
+        ${UI.campo('Ora inizio', UI.input({ tipo: 'time', valore: f('oraInizio') }).replace('<input', '<input' + fld('oraInizio')))}
+        ${UI.campo('Ora fine', UI.input({ tipo: 'time', valore: f('oraFine') }).replace('<input', '<input' + fld('oraFine')))}
+      </div>`
+      + UI.campo('Note per il FM', `<textarea class="form-textarea"${fld('note')} placeholder="Motivo della visita, indicazioni particolari…"></textarea>`);
+  },
+  footer: () => chiudi() + ok('Invia richiesta', 'emp-invia-richiesta-pass')
+});
+
 Modals.register('emp-profile', {
   titolo: () => '👤 Il mio profilo',
   body: () => {
@@ -3865,7 +3975,6 @@ Modals.register('emp-profile', {
       + UI.infoGrid([
         UI.infoBox('Stallo assegnato', d.stalloId ? `${UI.esc(d.stalloId)} · ${UI.esc((S.stallo(d.stalloId) || {}).piano || '')}` : '<span class="muted">Pool rotante</span>'),
         UI.infoBox('Accessi (mese)', d.accessiMese),
-        UI.infoBox('No-show', `<span style="color:var(--${d.noShow ? 'amber' : 'green'})">${d.noShow}</span>`),
         UI.infoBox('Segnalazioni fatte', d.segnalazioniFatte)
       ]);
   },
@@ -4400,7 +4509,7 @@ global.PC.Sezioni.prenotazioni = {
     const isoGiorni = giorni.map(U.toISO);
     const offset = State.ui.fmWeekOffset;
     const k = S.kpiPrenotazioni(isoGiorni.includes(U.OGGI_ISO) ? U.OGGI_ISO : isoGiorni[0]);
-    const settimane = State.config.prenotazioni.maxBookingWeeks;
+    const finestra = State.config.prenotazioni.finestraGiorniLavorativi;
     const righe = S.righeSettimanaFM();
     const q = State.ui.filtri.dipendenti.q;
 
@@ -4427,7 +4536,7 @@ global.PC.Sezioni.prenotazioni = {
       </div>`;
 
     return kpi
-      + UI.alert(`📅 Finestra di prenotazione configurata: <strong>max ${settimane} settiman${settimane === 1 ? 'a' : 'e'}</strong> in anticipo — modificabile in <a data-act="nav" data-sezione="config" style="color:inherit;text-decoration:underline;cursor:pointer">Config → Policy</a>`, 'info')
+      + UI.alert(`📅 Finestra di prenotazione: <strong>${finestra} giorni lavorativi</strong> (oggi incluso) — modificabile in <a data-act="nav" data-sezione="config" style="color:inherit;text-decoration:underline;cursor:pointer">Config → Policy</a>`, 'info')
       + UI.card({
           titolo: 'Vista Settimanale',
           sub: UI.esc(titolo) + (q ? ` · ricerca "${UI.esc(q)}"` : ' · dipendenti in evidenza'),
@@ -4661,6 +4770,7 @@ global.PC.Sezioni.dipendenti = {
         d.stalloId ? UI.tag(d.stalloId, 'blue') : '<span class="muted">pool</span>',
         d.metodoAccesso === 'app2n' ? 'App + 2N' : d.metodoAccesso === 'app' ? 'Solo App' : 'Sospeso',
         car,
+        UI.toggle('toggle-pass-dip', d.puoRichiederePass, { dipendenteId: d.id }),
         statoBadge(d),
         d.statoAccount === 'invito_da_inviare'
           ? UI.btn('📧 Invia invito', { azione: 'invita-dip', params: { dipendenteId: d.id } })
@@ -4684,7 +4794,7 @@ global.PC.Sezioni.dipendenti = {
         UI.btn('+ Aggiungi Dipendente', { azione: 'apri-modale', params: { modale: 'add-user' }, variante: 'btn-primary' })
       ],
       body: UI.tabella({
-        head: ['Nome', 'Dip.', 'Stallo', 'Accesso', 'Caratt.', 'Stato', ''],
+        head: ['Nome', 'Dip.', 'Stallo', 'Accesso', 'Caratt.', 'Pass vis.', 'Stato', ''],
         rows,
         vuoto: `Nessun dipendente trovato per "${UI.esc(q)}".`
       })
@@ -4699,6 +4809,17 @@ UI.on('azzera-cerca-dip', () => A.resetFiltri('dipendenti'));
 UI.on('apri-dip', d => { A.seleziona('dipendenteId', d.dipendenteId); Modals.open('dip-det', { dipendenteId: d.dipendenteId }); });
 UI.on('apri-dip-pass', d => Modals.open('dip-pass', { dipendenteId: d.dipendenteId }));
 
+/* onChange e non on(): il data-act sta sulla <label>, quindi il click non ha
+   handler registrato e non ferma la propagazione — se lo intercettassimo su
+   'click' partirebbe anche l'apertura del modale della riga. */
+UI.onChange('toggle-pass-dip', d => {
+  const dip = A.togglePuoRichiederePass(d.dipendenteId);
+  if (Modals.corrente) Modals.refresh();
+  UI.toast(dip.puoRichiederePass
+    ? `✓ ${dip.nomeCompleto} può richiedere pass visitatore`
+    : `– ${dip.nomeCompleto} non può più richiedere pass visitatore`);
+});
+
 UI.on('salva-dip', d => {
   Modals._collect();
   const dip = A.aggiornaDipendente(d.dipendenteId, {
@@ -4711,9 +4832,12 @@ UI.on('salva-dip', d => {
 });
 
 UI.on('sospendi-dip', d => {
-  const dip = A.sospendiDipendente(d.dipendenteId, 'Sospensione manuale del Facility Manager');
+  const r = A.sospendiDipendente(d.dipendenteId, 'Sospensione manuale del Facility Manager');
   Modals.close();
-  UI.toast(`🚫 Accesso sospeso per ${dip.nomeCompleto} · prenotazioni future annullate`);
+  UI.toast(`🚫 Accesso sospeso per ${r.dipendente.nomeCompleto} · `
+    + (r.annullate
+        ? `${r.annullate} prenotazion${r.annullate === 1 ? 'e' : 'i'} futur${r.annullate === 1 ? 'a' : 'e'} annullat${r.annullate === 1 ? 'a' : 'e'}`
+        : 'nessuna prenotazione futura'));
 });
 
 UI.on('crea-dip', () => {
@@ -5158,10 +5282,10 @@ function tabPolicy() {
     stile: 'margin-bottom:14px',
     body: [
       UI.setting('Finestra massima prenotazione',
-        `I dipendenti possono prenotare fino a <strong style="color:var(--blue)">${p.maxBookingWeeks} settiman${p.maxBookingWeeks === 1 ? 'a' : 'e'}</strong> in anticipo`,
+        `I dipendenti possono prenotare entro <strong style="color:var(--blue)">${p.finestraGiorniLavorativi} giorni lavorativi</strong> (oggi incluso)`,
         `<div style="display:flex;align-items:center;gap:8px">
-          <input type="range" min="1" max="4" value="${p.maxBookingWeeks}" style="width:80px" data-act="slider-settimane">
-          <span class="mono" style="font-size:11px;color:var(--blue);min-width:22px">${p.maxBookingWeeks}w</span>
+          <input type="range" min="5" max="20" step="5" value="${p.finestraGiorniLavorativi}" style="width:80px" data-act="slider-settimane">
+          <span class="mono" style="font-size:11px;color:var(--blue);min-width:32px">${p.finestraGiorniLavorativi}gg</span>
         </div>`),
       UI.setting('No-show: libera stallo dopo', `${p.noShowMinuti} minuti dal check-in previsto`,
         `<input type="number" class="num-input" value="${p.noShowMinuti}" min="5" max="180" data-act="cfg-noshow">`),
@@ -5323,7 +5447,7 @@ UI.on('rimuovi-email-notifica', d => {
   UI.toast(`${d.email} rimosso dai destinatari`);
 });
 
-UI.onInput('slider-settimane', (d, ev) => A.setPolicy({ maxBookingWeeks: parseInt(ev.target.value, 10) }));
+UI.onInput('slider-settimane', (d, ev) => A.setPolicy({ finestraGiorniLavorativi: parseInt(ev.target.value, 10) }));
 UI.onChange('cfg-noshow',       (d, ev) => A.setPolicy({ noShowMinuti: parseInt(ev.target.value, 10) || 30 }));
 UI.onChange('cfg-durata',       (d, ev) => A.setPolicy({ durataMaxDipendenteOre: parseInt(ev.target.value, 10) || 10 }));
 UI.onChange('cfg-durata-ev',    (d, ev) => A.setPolicy({ durataMaxEvOre: parseInt(ev.target.value, 10) || 4 }));
@@ -5357,7 +5481,7 @@ UI.on('salva-policy', () => {
   Modals._collect();
   const fm = Modals.form;
   A.setPolicy({
-    maxBookingWeeks: Math.min(4, Math.max(1, parseInt(fm.maxBookingWeeks, 10) || 1)),
+    finestraGiorniLavorativi: Math.min(20, Math.max(1, parseInt(fm.finestraGiorniLavorativi, 10) || 10)),
     noShowMinuti: parseInt(fm.noShowMinuti, 10) || 30,
     durataMaxDipendenteOre: parseInt(fm.durataMaxDipendenteOre, 10) || 10,
     notificaDurataOre: parseInt(fm.notificaDurataOre, 10) || 8,
@@ -5900,7 +6024,7 @@ global.PC.Sezioni.dipendenteView = {
        a un utente di piattaforma (o e' incoerente) non si prosegue: meglio un
        messaggio neutro che una vista popolata con dati di un altro. */
     if (!dip) { vistaNonDisponibile(); return; }
-    const settimane = State.config.prenotazioni.maxBookingWeeks;
+    const anticipo = S.giorniAnticipo();
     const giorni = S.settimanaEmp();
     const oggi = new Date();
 
@@ -5914,6 +6038,7 @@ global.PC.Sezioni.dipendenteView = {
         <small>${UI.esc(State.config.sede.descrizione)}</small>
       </div>
       <div style="display:flex;align-items:center;gap:10px">
+        ${dip.puoRichiederePass ? UI.btn('🪪 Richiedi Pass', { azione: 'apri-modale', params: { modale: 'emp-richiedi-pass' } }) : ''}
         ${UI.btn('🚨 Segnala', { azione: 'apri-modale', params: { modale: 'emp-segnala' } })}
         <div class="emp-av" data-act="apri-modale" data-modale="emp-profile" title="Profilo">${UI.esc(dip.iniziali)}</div>
         ${UI.btn('⏻', { azione: 'logout', sm: false, stile: 'padding:7px 10px;font-size:14px', titolo: 'Esci' })}
@@ -5932,7 +6057,7 @@ global.PC.Sezioni.dipendenteView = {
             ${segnalazioniMie.length
               ? UI.badge(segnalazioniMie.length + ' segnalazione' + (segnalazioniMie.length > 1 ? 'i' : '') + ' in corso', 'amber')
               : UI.badge('Nessuna segnalazione attiva', 'green', true)}
-            <div class="booking-window-chip">📅 Prenota fino a <strong>${settimane} settiman${settimane === 1 ? 'a' : 'e'}</strong> in anticipo</div>
+            <div class="booking-window-chip">📅 Prenota fino a <strong>${anticipo} giorn${anticipo === 1 ? 'o' : 'i'} lavorativ${anticipo === 1 ? 'o' : 'i'}</strong> in anticipo</div>
           </div>
         </div>
         <div style="text-align:right">
@@ -5951,7 +6076,7 @@ global.PC.Sezioni.dipendenteView = {
           <span>${U.fmtDM(giorni[0])} – ${U.fmtDM(giorni[4])}</span>
         </div>
         ${UI.btn('‹ Prec', { azione: 'week-emp', params: { delta: -1 }, disabled: off <= 0 })}
-        ${UI.btn('Succ ›', { azione: 'week-emp', params: { delta: 1 }, disabled: off >= settimane - 1 })}
+        ${UI.btn('Succ ›', { azione: 'week-emp', params: { delta: 1 }, disabled: !S.settimanaHaGiorniPrenotabili(off + 1) })}
       </div>`;
 
     /* ---- GRIGLIA GIORNI ---- */
@@ -6080,6 +6205,26 @@ function cardGiorno(g, dip) {
 
 /* ---- handler ---------------------------------------------------------- */
 UI.on('week-emp', d => A.empWeek(parseInt(d.delta, 10)));
+
+UI.on('emp-invia-richiesta-pass', () => {
+  Modals._collect();
+  const dip = S.dipendenteCorrente();
+  if (!dip) { UI.toast('Sessione non valida'); return; }
+  /* Doppia guardia: il pulsante non c'e' per chi non e' abilitato, ma
+     l'azione e' comunque raggiungibile da console. */
+  if (!dip.puoRichiederePass) { UI.toast('Non sei abilitato a richiedere pass visitatore'); return; }
+  const fm = Modals.form;
+  if (!(fm.visitatoreNome || '').trim())  { UI.toast('Il nome del visitatore è obbligatorio'); return; }
+  if (!(fm.visitatoreEmail || '').trim()) { UI.toast('L\'email del visitatore è obbligatoria'); return; }
+  A.creaRichiestaPass({
+    dipendenteId: dip.id,
+    visitatoreNome: fm.visitatoreNome, visitatoreEmail: fm.visitatoreEmail,
+    azienda: fm.azienda, data: fm.data,
+    oraInizio: fm.oraInizio, oraFine: fm.oraFine, note: fm.note
+  });
+  Modals.close();
+  UI.toast('📨 Richiesta inviata al Facility Manager');
+});
 
 UI.on('emp-apri-giorno', d => {
   State.ui.selezione.giornoISO = d.giornoIso;

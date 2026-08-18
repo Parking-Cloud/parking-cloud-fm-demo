@@ -26,7 +26,9 @@ stato incoerente. È l'origine di CODE-03.
 | `stalli` | `statoStallo`, `kpiStalli`, `occupazionePerZona`, `assegnaStalloConMotivo`, F05–F07 |
 | `segnalazioni` | `kpiSegnalazioni`, `segnalazioniAttive`, `badges`, F04 |
 | `dipendenti` | `kpiDipendenti`, `dipendentiFiltrati`, `trovaAccountPerEmail`, F10 |
-| `config.prenotazioni` | `ultimaDataPrenotabile`, `dataPrenotabile`, F11 |
+| `config.prenotazioni` | `finestraPrenotazione`, `ultimaDataPrenotabile`, `dataPrenotabile`, `settimanaHaGiorniPrenotabili`, `giorniAnticipo`, F11, F17 |
+| `puoRichiederePass` | topbar `employee/index.js`, colonna Pass vis. in `fm/dipendenti.js`, toggle in `dip-det`, F18 |
+| stato di un dipendente (`sospendiDipendente`) | `annullaPrenotazione`, `statoStallo`, `righeSettimanaFM`, `kpiDipendenti`, F19 |
 | `utentiPiattaforma` | `trovaAccountPerEmail`, `utenteCorrente`, `facilityManager`, F12 |
 | `PERMISSIONS` | sidebar e tab in `index.html`, `Sezioni.*`, F12 |
 | identita' sessione | `dipendenteCorrente()` in tutte le viste `emp-*` — mai `utenteDemo()`, F15, F16 |
@@ -154,13 +156,77 @@ stato incoerente. È l'origine di CODE-03.
 
 - **Sorgente:** `fm/config.js` → `slider-settimane`, `salva-policy`
 - **Actions:** `setPolicy()`
-- **Selectors:** `ultimaDataPrenotabile()`, `dataPrenotabile()`, `settimanaEmp()`
+- **Selectors:** `finestraPrenotazione()`, `ultimaDataPrenotabile()`, `dataPrenotabile()`, `settimanaEmp()`, `settimanaHaGiorniPrenotabili()`
 - **Sezioni FM impattate:** Config, Prenotazioni (alert finestra), Vista Dipendente
 - **Modali:** `policy`
-- **Da sapere:** restringere la finestra **annulla** le prenotazioni fuori
-  finestra e ricalcola `empWeekOffset`.
+- **Da sapere:**
+  - Il campo e' `finestraGiorniLavorativi` (5–20, default 10), **non**
+    `maxBookingWeeks`: quello non esiste piu'.
+  - Restringere la finestra **annulla** le prenotazioni fuori finestra e
+    riporta `empWeekOffset` sull'ultima settimana ancora utile.
+  - Il nodo dello slider diventa orfano dopo `setPolicy()`: in un test va
+    ri-cercato a ogni passo (N04a).
 - **Verifica:** chip dipendente aggiornato · "Succ ›" abilitato/disabilitato di
-  conseguenza
+  conseguenza · nessuna prenotazione attiva oltre il limite
+
+## F17 — Finestra di prenotazione a giorni lavorativi (CODE-15)
+
+- **Sorgente:** `state.js` (`giorniLavorativi`, `isLavorativo`), `employee/index.js`
+- **Selectors:** `finestraPrenotazione()`, `dataPrenotabile()`, `ultimaDataPrenotabile()`, `giorniAnticipo()`, `settimanaHaGiorniPrenotabili()`
+- **Sezioni FM impattate:** Prenotazioni (disclaimer), Config (slider)
+- **Da sapere:**
+  - `ultimaDataPrenotabile()` e' **inclusiva**. Il confronto giusto e' `<=`.
+    Chi scrive `<` (o `>=` sul limite, come faceva `setPolicy`) taglia fuori
+    l'ultimo giorno utile.
+  - `giorniLavorativi(da, n)` prende la data di partenza come parametro: e'
+    l'unico modo di testare "oggi = lunedi'" senza toccare l'orologio.
+  - Un giorno **passato** mostra "Passato"; un giorno **futuro fuori finestra**
+    mostra "Non prenotabile". Sono due stati diversi con la stessa classe
+    `day-past`.
+  - Le card non prenotabili non hanno `data-giorno-iso`: non sono cliccabili.
+    In un test vanno allineate per indice a `settimanaEmp()`.
+- **Verifica:** partenza lunedi' → ultimo utile venerdi' della settimana
+  successiva · nessun sabato/domenica in finestra · "Succ ›" si disabilita
+  sulla prima settimana senza giorni prenotabili
+
+## F18 — Richiesta pass visitatore inoltrata dal dipendente (CODE-15)
+
+- **Sorgente:** `employee/index.js` → `emp-invia-richiesta-pass`
+- **Actions:** `creaRichiestaPass()`, `togglePuoRichiederePass()`
+- **Selectors:** `dipendenteCorrente()`, `badges()` (badge Dipendenti)
+- **Sezioni FM impattate:** Dipendenti (banner + colonna Pass vis.), Visitatori
+- **Modali:** `emp-richiedi-pass`, `dip-det`, `req-pass`
+- **Da sapere:**
+  - Il pulsante in topbar e' reso **solo** se `puoRichiederePass === true`, ma
+    l'handler ricontrolla il flag: l'azione resta raggiungibile da console.
+  - Nel seed sono abilitati **3** dipendenti: Matteo Bruni (l'account demo,
+    senza il quale la feature non si vedrebbe entrando come dipendente), Laura
+    Conti (ha gia' una richiesta pendente nel seed) e Sara Bellotti.
+  - Il toggle in tabella e' agganciato con `UI.onChange` e non `UI.on`: il
+    `data-act` sta sulla `<label>`, e intercettando il `click` partirebbe anche
+    l'apertura del modale della riga.
+  - La richiesta nasce sempre `in_attesa`: sbocca in F09 per l'approvazione.
+- **Verifica:** pulsante assente per un non abilitato · nome ed email
+  obbligatori · richiesta nel banner FM e in `req-pass` · badge Dipendenti +1
+
+## F19 — Sospensione dipendente (CODE-15)
+
+- **Sorgente:** `fm/dipendenti.js` → `sospendi-dip`
+- **Actions:** `sospendiDipendente()` → `annullaPrenotazione()`
+- **Selectors:** `statoStallo()`, `righeSettimanaFM()`, `kpiDipendenti()`
+- **Sezioni FM impattate:** Dipendenti, Prenotazioni, Mappa, Dashboard
+- **Modali:** `dip-det`
+- **Da sapere:**
+  - Ritorna `{ dipendente, annullate }`, non il dipendente: il conteggio serve
+    al toast e non ha senso conservarlo sull'anagrafica.
+  - Le prenotazioni future passano da `annullaPrenotazione()`, che chiude anche
+    l'accesso rimasto aperto. Con un assegnamento diretto `p.stato =
+    'annullata'` lo stallo di oggi resterebbe rosso in mappa (bug CODE-03).
+  - Annulla **solo** `data >= oggi`: le celle dei giorni passati restano piene,
+    ed e' corretto — lo storico non si riscrive.
+- **Verifica:** toast con il conteggio esatto (o "nessuna prenotazione futura")
+  · celle vuote da oggi in poi nella griglia FM · stalli `ms-free` in mappa ·
+  zero accessi aperti residui
 
 ## F12 — Login Admin → accesso Amministrazione
 

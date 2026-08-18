@@ -49,6 +49,7 @@ global.PC.Sezioni.dipendenti = {
         d.stalloId ? UI.tag(d.stalloId, 'blue') : '<span class="muted">pool</span>',
         d.metodoAccesso === 'app2n' ? 'App + 2N' : d.metodoAccesso === 'app' ? 'Solo App' : 'Sospeso',
         car,
+        UI.toggle('toggle-pass-dip', d.puoRichiederePass, { dipendenteId: d.id }),
         statoBadge(d),
         d.statoAccount === 'invito_da_inviare'
           ? UI.btn('📧 Invia invito', { azione: 'invita-dip', params: { dipendenteId: d.id } })
@@ -72,7 +73,7 @@ global.PC.Sezioni.dipendenti = {
         UI.btn('+ Aggiungi Dipendente', { azione: 'apri-modale', params: { modale: 'add-user' }, variante: 'btn-primary' })
       ],
       body: UI.tabella({
-        head: ['Nome', 'Dip.', 'Stallo', 'Accesso', 'Caratt.', 'Stato', ''],
+        head: ['Nome', 'Dip.', 'Stallo', 'Accesso', 'Caratt.', 'Pass vis.', 'Stato', ''],
         rows,
         vuoto: `Nessun dipendente trovato per "${UI.esc(q)}".`
       })
@@ -87,6 +88,17 @@ UI.on('azzera-cerca-dip', () => A.resetFiltri('dipendenti'));
 UI.on('apri-dip', d => { A.seleziona('dipendenteId', d.dipendenteId); Modals.open('dip-det', { dipendenteId: d.dipendenteId }); });
 UI.on('apri-dip-pass', d => Modals.open('dip-pass', { dipendenteId: d.dipendenteId }));
 
+/* onChange e non on(): il data-act sta sulla <label>, quindi il click non ha
+   handler registrato e non ferma la propagazione — se lo intercettassimo su
+   'click' partirebbe anche l'apertura del modale della riga. */
+UI.onChange('toggle-pass-dip', d => {
+  const dip = A.togglePuoRichiederePass(d.dipendenteId);
+  if (Modals.corrente) Modals.refresh();
+  UI.toast(dip.puoRichiederePass
+    ? `✓ ${dip.nomeCompleto} può richiedere pass visitatore`
+    : `– ${dip.nomeCompleto} non può più richiedere pass visitatore`);
+});
+
 UI.on('salva-dip', d => {
   Modals._collect();
   const dip = A.aggiornaDipendente(d.dipendenteId, {
@@ -99,9 +111,12 @@ UI.on('salva-dip', d => {
 });
 
 UI.on('sospendi-dip', d => {
-  const dip = A.sospendiDipendente(d.dipendenteId, 'Sospensione manuale del Facility Manager');
+  const r = A.sospendiDipendente(d.dipendenteId, 'Sospensione manuale del Facility Manager');
   Modals.close();
-  UI.toast(`🚫 Accesso sospeso per ${dip.nomeCompleto} · prenotazioni future annullate`);
+  UI.toast(`🚫 Accesso sospeso per ${r.dipendente.nomeCompleto} · `
+    + (r.annullate
+        ? `${r.annullate} prenotazion${r.annullate === 1 ? 'e' : 'i'} futur${r.annullate === 1 ? 'a' : 'e'} annullat${r.annullate === 1 ? 'a' : 'e'}`
+        : 'nessuna prenotazione futura'));
 });
 
 UI.on('crea-dip', () => {

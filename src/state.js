@@ -60,6 +60,17 @@ function getMonday(d) {
   return addDays(r, day === 0 ? -6 : 1 - day);
 }
 function toISO(d)      { const r = new Date(d); return r.getFullYear() + '-' + String(r.getMonth() + 1).padStart(2, '0') + '-' + String(r.getDate()).padStart(2, '0'); }
+/** Lunedi'-venerdi'. Sabato e domenica non contano nella finestra di prenotazione. */
+function isLavorativo(d) { const g = d.getDay(); return g >= 1 && g <= 5; }
+/** I primi `n` giorni lavorativi a partire da `da` INCLUSO.
+    La data di partenza e' un parametro e non OGGI: e' l'unico modo di
+    verificare il caso "oggi = lunedi'" senza spostare l'orologio del browser. */
+function giorniLavorativi(da, n) {
+  const out = [];
+  let d = startOfDay(da);
+  while (out.length < n) { if (isLavorativo(d)) out.push(new Date(d)); d = addDays(d, 1); }
+  return out;
+}
 function fromISO(s)    { const [y, m, g] = s.split('-').map(Number); return new Date(y, m - 1, g); }
 function fmtShort(d)   { return DAYS_IT[d.getDay()] + ' ' + d.getDate(); }
 function fmtMedium(d)  { return DAYS_FULL_IT[d.getDay()] + ' ' + d.getDate() + ' ' + MONTHS_IT[d.getMonth()]; }
@@ -306,12 +317,12 @@ const DIPENDENTI_SEED = [
      NB: "Marco Bianchi" è il Facility Manager di piattaforma (vedi
      UTENTI_PIATTAFORMA); il dipendente demo ha un nome diverso per non
      avere due persone omonime con ruoli diversi. */
-  { nome: 'Matteo',   cognome: 'Bruni',    dip: 'Finance',    stallo: 'A-07', caratt: 'standard', utenteDemo: true, email: 'dipendente@demo.parkingcloud.eu' },
-  { nome: 'Laura',    cognome: 'Conti',    dip: 'Design',     stallo: 'B-22', caratt: 'standard' },
+  { nome: 'Matteo',   cognome: 'Bruni',    dip: 'Finance',    stallo: 'A-07', caratt: 'standard', utenteDemo: true, email: 'dipendente@demo.parkingcloud.eu', pass: true },
+  { nome: 'Laura',    cognome: 'Conti',    dip: 'Design',     stallo: 'B-22', caratt: 'standard', pass: true },
   { nome: 'Elena',    cognome: 'Ricci',    dip: 'Marketing',  stallo: 'EV-02', caratt: 'ev' },
   { nome: 'Paolo',    cognome: 'Marini',   dip: 'IT',         stallo: null,   caratt: 'standard', bloccato: { motivo: '3x occupazione abusiva', tipo: 'abusivo', giorniFa: 15 } },
   { nome: 'Anna',     cognome: 'Ferri',    dip: 'Sales',      stallo: null,   caratt: 'standard', bloccato: { motivo: 'Superamento durata max', tipo: 'durata', giorniFa: 21 } },
-  { nome: 'Sara',     cognome: 'Bellotti', dip: 'HR',         stallo: 'B-42', caratt: 'standard' },
+  { nome: 'Sara',     cognome: 'Bellotti', dip: 'HR',         stallo: 'B-42', caratt: 'standard', pass: true },
   { nome: 'Davide',   cognome: 'Neri',     dip: 'Operations', stallo: 'B-15', caratt: 'standard' },
   { nome: 'Giulia',   cognome: 'Moretti',  dip: 'Finance',    stallo: 'H-03', caratt: 'disabili' },
   { nome: 'Luca',     cognome: 'Gatti',    dip: 'IT',         stallo: 'C-14', caratt: 'standard' },
@@ -357,6 +368,9 @@ function buildDipendenti(stalli) {
       noShow: 0,
       segnalazioniFatte: 0,
       statoAccount: 'attivo',
+      /* abilitazione a richiedere un pass visitatore: concessa dal FM caso
+         per caso, quindi false per default e true solo dove il seed la dichiara */
+      puoRichiederePass: !!s.pass,
       utenteDemo: !!s.utenteDemo,
       inEvidenza: true
     });
@@ -394,6 +408,7 @@ function buildDipendenti(stalli) {
       noShow: rnd() < 0.12 ? rInt(1, 2) : 0,
       segnalazioniFatte: rnd() < 0.1 ? 1 : 0,
       statoAccount: 'attivo',
+      puoRichiederePass: false,
       utenteDemo: false,
       inEvidenza: false
     });
@@ -852,7 +867,7 @@ function buildConfig() {
       helpdesk: SEDE.helpdesk
     },
     prenotazioni: {
-      maxBookingWeeks: 1,          // finestra prenotazione dipendente (1–4)
+      finestraGiorniLavorativi: 10, // finestra prenotazione dipendente, in giorni lavorativi (oggi incluso)
       noShowMinuti: 30,
       durataMaxDipendenteOre: 10,
       notificaDurataOre: 8,
@@ -1394,7 +1409,12 @@ const S = {
 
   /* ---- prenotazioni ---- */
   settimanaFM()  { return [0, 1, 2, 3, 4].map(i => addDays(getMonday(addDays(OGGI, AppState.ui.fmWeekOffset * 7)), i)); },
-  settimanaEmp() { return [0, 1, 2, 3, 4].map(i => addDays(getMonday(addDays(OGGI, AppState.ui.empWeekOffset * 7)), i)); },
+  settimanaEmpOffset(off) { return [0, 1, 2, 3, 4].map(i => addDays(getMonday(addDays(OGGI, off * 7)), i)); },
+  settimanaEmp() { return S.settimanaEmpOffset(AppState.ui.empWeekOffset); },
+  /** true se la settimana a quell'offset contiene almeno un giorno prenotabile.
+      Serve al pulsante "Succ >": la finestra non e' piu' un numero intero di
+      settimane, quindi il limite non si puo' piu' derivare da un contatore. */
+  settimanaHaGiorniPrenotabili(off) { return S.settimanaEmpOffset(off).some(g => S.dataPrenotabile(g)); },
 
   prenotazione(dipendenteId, dataISO) {
     return AppState.prenotazioni.find(p => p.dipendenteId === dipendenteId && p.data === dataISO && p.stato !== 'annullata') || null;
@@ -1413,9 +1433,17 @@ const S = {
       .map(d => ({ dipendente: d, celle: giorni.map(iso => ({ iso, prenotazione: S.prenotazione(d.id, iso) })) }));
   },
 
-  /** finestra di prenotazione: ultima data prenotabile (RF02/RF03) */
-  ultimaDataPrenotabile() { return addDays(OGGI, AppState.config.prenotazioni.maxBookingWeeks * 7); },
-  dataPrenotabile(d)      { const g = startOfDay(d); return g >= OGGI && g < S.ultimaDataPrenotabile(); },
+  /** I giorni lavorativi prenotabili, oggi incluso (10 per default). */
+  finestraPrenotazione() { return giorniLavorativi(OGGI, AppState.config.prenotazioni.finestraGiorniLavorativi); },
+  /** Ultima data prenotabile — **inclusiva**. Prima era un limite esclusivo
+      (OGGI + N*7): chi la confronta deve usare <=, non <. */
+  ultimaDataPrenotabile() { const f = S.finestraPrenotazione(); return f[f.length - 1]; },
+  /** Giorni di anticipo dichiarati all'utente: oggi non e' "anticipo". */
+  giorniAnticipo()       { return Math.max(0, AppState.config.prenotazioni.finestraGiorniLavorativi - 1); },
+  dataPrenotabile(d) {
+    const g = startOfDay(d);
+    return isLavorativo(g) && g >= OGGI && g <= S.ultimaDataPrenotabile();
+  },
 
   /* ---- segnalazioni ---- */
   segnalazioniAttive() {
@@ -1653,8 +1681,13 @@ const A = {
   /* ---- navigazione settimane (fix DV09) ---- */
   fmWeek(delta)  { AppState.ui.fmWeekOffset += delta; Store.emit('week'); },
   empWeek(delta) {
-    const max = AppState.config.prenotazioni.maxBookingWeeks - 1;
-    AppState.ui.empWeekOffset = Math.min(Math.max(0, AppState.ui.empWeekOffset + delta), Math.max(0, max));
+    const next = AppState.ui.empWeekOffset + delta;
+    if (next < 0) return;
+    /* In avanti ci si sposta solo se la settimana contiene ancora almeno un
+       giorno prenotabile: con una finestra in giorni lavorativi l'ultima
+       settimana raggiungibile e' quasi sempre parziale. */
+    if (delta > 0 && !S.settimanaHaGiorniPrenotabili(next)) return;
+    AppState.ui.empWeekOffset = next;
     Store.emit('week');
   },
 
@@ -1817,6 +1850,7 @@ const A = {
       bloccoMotivo: null, bloccoTipo: null, bloccoDal: null,
       accessiMese: 0, noShow: 0, segnalazioniFatte: 0,
       statoAccount: 'invito_inviato',
+      puoRichiederePass: false,
       utenteDemo: false, inEvidenza: true
     };
     AppState.dipendenti.push(d);
@@ -1826,14 +1860,31 @@ const A = {
   },
   aggiornaDipendente(id, patch) { const d = S.dipendente(id); if (d) Object.assign(d, patch); Store.emit('dipendenti'); return d; },
 
+  /** Abilita/disabilita un singolo dipendente a richiedere pass visitatore. */
+  togglePuoRichiederePass(id) {
+    const d = S.dipendente(id);
+    if (!d) return null;
+    d.puoRichiederePass = !d.puoRichiederePass;
+    Store.emit('dipendenti');
+    return d;
+  },
+
+  /** Sospende l'accesso e libera il parcheggio da quel dipendente.
+      Ritorna { dipendente, annullate }: il conteggio serve al toast e non ha
+      senso conservarlo sull'anagrafica. */
   sospendiDipendente(id, motivo) {
     const d = S.dipendente(id);
     if (!d) return null;
     Object.assign(d, { stato: 'bloccato', metodoAccesso: 'sospeso', appAttiva: false, bloccoMotivo: motivo || 'Sospensione manuale FM', bloccoTipo: 'manuale', bloccoDal: OGGI_ISO });
-    /* libera le prenotazioni future */
-    AppState.prenotazioni.forEach(p => { if (p.dipendenteId === id && p.data >= OGGI_ISO && p.stato === 'attiva') p.stato = 'annullata'; });
+    /* Le prenotazioni future passano da annullaPrenotazione() e non da un
+       assegnamento diretto: quella funzione chiude anche l'accesso rimasto
+       aperto, senza il quale lo stallo di oggi resterebbe rosso in mappa
+       (e' esattamente il bug corretto in CODE-03). */
+    const future = AppState.prenotazioni.filter(p =>
+      p.dipendenteId === id && p.data >= OGGI_ISO && p.stato === 'attiva');
+    future.forEach(p => A.annullaPrenotazione(p.id, { silent: true }));
     Store.emit('dipendenti');
-    return d;
+    return { dipendente: d, annullate: future.length };
   },
 
   sbloccaDipendente(id, { motivazione, durata }) {
@@ -1886,6 +1937,26 @@ const A = {
     }
     Store.emit('visitatori');
     return v;
+  },
+
+  /** Richiesta di pass inoltrata dal dipendente al FM. Nasce sempre
+      'in_attesa': e' il FM a deciderne l'esito da Dipendenti -> req-pass. */
+  creaRichiestaPass({ dipendenteId, visitatoreNome, visitatoreEmail, azienda, data, oraInizio, oraFine, note }) {
+    const r = {
+      id: nextId('REQ'),
+      dipendenteId,
+      visitatoreNome: (visitatoreNome || '').trim(),
+      visitatoreEmail: (visitatoreEmail || '').trim(),
+      azienda: (azienda || '').trim() || '—',
+      data: data || OGGI_ISO,
+      oraInizio: oraInizio || '09:00',
+      oraFine: oraFine || '18:00',
+      stato: 'in_attesa',
+      note: (note || '').trim()
+    };
+    AppState.richiestePass.push(r);
+    Store.emit('richieste');
+    return r;
   },
 
   approvaRichiestaPass(richiestaId, note) {
@@ -1978,10 +2049,15 @@ const A = {
   /* ---- CONFIG ---- */
   setPolicy(patch) {
     Object.assign(AppState.config.prenotazioni, patch);
-    /* la finestra si è ristretta → annulla le prenotazioni fuori finestra */
+    /* la finestra si è ristretta → annulla le prenotazioni fuori finestra.
+       `limite` e' ora INCLUSIVO: il confronto e' > e non >=. */
     const limite = toISO(S.ultimaDataPrenotabile());
-    AppState.prenotazioni.forEach(p => { if (p.data >= limite && p.stato === 'attiva') p.stato = 'annullata'; });
-    AppState.ui.empWeekOffset = Math.min(AppState.ui.empWeekOffset, Math.max(0, AppState.config.prenotazioni.maxBookingWeeks - 1));
+    AppState.prenotazioni.forEach(p => { if (p.data > limite && p.stato === 'attiva') p.stato = 'annullata'; });
+    /* riporta il dipendente sull'ultima settimana che contiene giorni ancora
+       prenotabili, altrimenti resterebbe su una griglia tutta grigia */
+    while (AppState.ui.empWeekOffset > 0 && !S.settimanaHaGiorniPrenotabili(AppState.ui.empWeekOffset)) {
+      AppState.ui.empWeekOffset--;
+    }
     Store.emit('config');
   },
   setNotifica(chiave, valore) { AppState.config.notifiche[chiave] = valore; Store.emit('config'); },
@@ -2131,7 +2207,8 @@ global.PC.Utils = {
   OGGI, OGGI_ISO,
   startOfDay, addDays, getMonday, toISO, fromISO,
   fmtShort, fmtMedium, fmtDM, hhmm, fmtDurata, fmtMinuti,
-  iniziali, nextId, rInt, toCSV
+  iniziali, nextId, rInt, toCSV,
+  isLavorativo, giorniLavorativi
 };
 global.PC.Domini = { TIPO_STALLO, DISPONIBILITA, STATO_STALLO, METODO_ACCESSO, TIPO_SEGNALAZIONE, DIPARTIMENTI, RUOLI, PERMISSIONS, STATO_ACCOUNT, TIPI_HW };
 
