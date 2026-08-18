@@ -1426,6 +1426,23 @@ const S = {
       .sort((a, b) => b.dataRichiesta - a.dataRichiesta);
   },
 
+  /** Quante volte lo stesso stallo puo' essere usato in 24h.
+      La capacita' e' limitata dal turno PIU' LUNGO: con turni da 8h se ne
+      servono 3, ma basta un turno da 12h perche' scendano a 2. Si divide
+      quindi la giornata per la durata massima, non per la media. */
+  maxTurniPerStallo() {
+    const turni = AppState.config.turni || [];
+    if (!turni.length) return { max: 1, durataMaxMin: 1440, durate: [] };
+    const durata = (t) => {
+      const dal = S.minutiDa(t.inizio), al = S.minutiDa(t.fine);
+      /* un turno a cavallo della mezzanotte dura fino a fine giornata + al */
+      return dal <= al ? (al - dal) : (1440 - dal + al);
+    };
+    const durate = turni.map(t => ({ id: t.id, label: t.label, min: durata(t) }));
+    const durataMaxMin = Math.max.apply(null, durate.map(d => d.min)) || 1440;
+    return { max: Math.max(1, Math.floor(1440 / durataMaxMin)), durataMaxMin, durate };
+  },
+
   /** KPI per turno di un giorno: prenotati, liberi, % occupazione. */
   kpiPerTurno(giornoIso) {
     const data = giornoIso || OGGI_ISO;
@@ -1582,11 +1599,14 @@ const S = {
   media(totale, giorni) { return Math.round(totale / Math.max(1, giorni)); },
 
   /* ---- KPI mappa / dashboard ---- */
-  kpiStalli(dataISO) {
+  /** `turnoId` opzionale: in modalita' turni permette di chiedere i numeri di
+      un turno DIVERSO da quello in corso — e' cio' che serve alla Mappa quando
+      il FM seleziona una fascia. Senza, si legge sempre il turno attivo. */
+  kpiStalli(dataISO, turnoId) {
     const data = dataISO || OGGI_ISO;
     let liberi = 0, occupati = 0, manutenzione = 0;
     AppState.stalli.forEach(s => {
-      const st = S.statoStallo(s.id, data).stato;
+      const st = S.statoStallo(s.id, data, turnoId).stato;
       if (st === 'libero') liberi++;
       else if (st === 'manutenzione' || st === 'bloccato') manutenzione++;
       else occupati++;
@@ -1602,10 +1622,10 @@ const S = {
   },
 
   /** Occupazione per zona — alimenta la mini-mappa della Dashboard */
-  occupazionePerZona(dataISO) {
+  occupazionePerZona(dataISO, turnoId) {
     return AppState.zone.map(z => {
       const stalliZona = AppState.stalli.filter(s => s.zonaId === z.id);
-      const occupati = stalliZona.filter(s => S.statoStallo(s.id, dataISO).stato !== 'libero').length;
+      const occupati = stalliZona.filter(s => S.statoStallo(s.id, dataISO, turnoId).stato !== 'libero').length;
       const tot = stalliZona.length;
       return { id: z.id, nome: z.nome, colore: z.colore, occupati, totale: tot, perc: tot ? Math.round(occupati / tot * 100) : 0 };
     });

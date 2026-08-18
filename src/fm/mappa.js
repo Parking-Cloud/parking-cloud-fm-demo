@@ -76,7 +76,10 @@ global.PC.Sezioni.mappa = {
     const mappa = State.zone.map(z => {
       const stalli = State.stalli.filter(s => s.zonaId === z.id);
       if (!stalli.length) return '';
-      const liberi = stalli.filter(s => S.statoStallo(s.id).stato === 'libero').length;
+      /* Segue il turno SELEZIONATO, non quello in corso: altrimenti
+         scegliendo "Notte" le intestazioni di zona continuerebbero a mostrare
+         i numeri del turno attuale. */
+      const liberi = stalli.filter(s => S.statoStallo(s.id, U.OGGI_ISO, turnoSel ? turnoSel.id : undefined).stato === 'libero').length;
       return `<div class="zone-lbl">${UI.esc(z.nome)} <span class="zone-count">${stalli.length - liberi}/${stalli.length}</span></div>
         <div class="map-row">${stalli.map(s => {
           const stato = S.statoStallo(s.id, U.OGGI_ISO, turnoSel ? turnoSel.id : undefined);

@@ -293,6 +293,12 @@ stato incoerente. È l'origine di CODE-03.
     in ogni turno. E' cio' che rende sicuro attivare i turni su dati vecchi.
   - Anche il ramo **accessi** di `statoStallo()` filtra per turno: un ingresso
     del mattino non deve tenere occupato lo stallo nella vista della notte.
+  - `kpiStalli(data, turnoId)` e `occupazionePerZona(data, turnoId)` accettano
+    il turno. **Chi disegna una vista per-turno deve passarlo**: senza, leggono
+    il turno in corso e i numeri contraddicono le tile (era il caso del
+    contatore di zona in Mappa, corretto in CODE-17 rev.).
+  - `maxTurniPerStallo()` divide le 24h per il turno **piu' lungo**, non per la
+    media: la capacita' e' limitata dal turno che occupa lo stallo piu' a lungo.
   - Il **giallo** (`ms-cambio`) non e' "siamo vicini a un confine": serve anche
     che lo stallo sia prenotato in entrambi i turni a cavallo. Senza quella
     condizione mezza mappa diventerebbe gialla due volte al giorno.

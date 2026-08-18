@@ -120,8 +120,8 @@ function tabPolicy() {
     stile: 'margin-bottom:14px',
     body: `
       <div class="modalita-toggle">
-        ${[['giornaliera', 'Giornaliera', 'Uno stallo per persona, tutto il giorno'],
-           ['turni', 'Per turni', 'Lo stesso stallo servito da pi\u00f9 turni']]
+        ${[['giornaliera', 'Giornaliera (uffici)', 'Uno stallo per persona, tutto il giorno'],
+           ['turni', 'Per turni (ospedali)', 'Lo stesso stallo servito da pi\u00f9 turni']]
           .map(([v, l, sub]) => `<div class="modalita-opt${State.config.modalitaPrenotazione === v ? ' active' : ''}"${UI.act('set-modalita', { modalita: v })}>
              <div class="modalita-lbl">${l}</div>
              <div class="modalita-sub">${sub}</div>
@@ -141,6 +141,13 @@ function tabPolicy() {
         </div>
         ${UI.btn('+ Aggiungi turno', { azione: 'aggiungi-turno' })}
         <div class="sep"></div>
+        ${(() => {
+          const m = S.maxTurniPerStallo();
+          const ore = (min) => (min % 60 === 0 ? (min / 60) + 'h' : Math.floor(min / 60) + 'h' + (min % 60));
+          return UI.setting('Max turni per stallo al giorno',
+            `Calcolato automaticamente: 24h \u00f7 ${ore(m.durataMaxMin)} (turno pi\u00f9 lungo) \u2014 ${turni.length} turn${turni.length === 1 ? 'o' : 'i'} configurat${turni.length === 1 ? 'o' : 'i'}`,
+            `<span class="max-turni-val">${m.max}\u00d7</span>`);
+        })()}
         ${UI.setting('Tolleranza cambio turno',
           `\u00b1${State.config.tolleranzaCambioTurnoMin} min di sovrapposizione consentita tra turni consecutivi`,
           `<div style="display:flex;align-items:center;gap:8px">

@@ -801,3 +801,5 @@ input[type=range]{accent-color:var(--blue)}
 
 /* ---- Lista d'attesa (CODE-17C) ---- */
 .attesa-azioni{display:flex;gap:8px;justify-content:flex-end;margin-top:10px;flex-wrap:wrap}
+
+.max-turni-val{font-family:var(--font-mono);font-size:20px;font-weight:700;color:var(--blue)}

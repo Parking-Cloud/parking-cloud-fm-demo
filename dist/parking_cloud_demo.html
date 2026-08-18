@@ -810,6 +810,8 @@ input[type=range]{accent-color:var(--blue)}
 /* ---- Lista d'attesa (CODE-17C) ---- */
 .attesa-azioni{display:flex;gap:8px;justify-content:flex-end;margin-top:10px;flex-wrap:wrap}
 
+.max-turni-val{font-family:var(--font-mono);font-size:20px;font-weight:700;color:var(--blue)}
+
 </style>
 </head>
 <body>
@@ -2330,6 +2332,23 @@ const S = {
       .sort((a, b) => b.dataRichiesta - a.dataRichiesta);
   },
 
+  /** Quante volte lo stesso stallo puo' essere usato in 24h.
+      La capacita' e' limitata dal turno PIU' LUNGO: con turni da 8h se ne
+      servono 3, ma basta un turno da 12h perche' scendano a 2. Si divide
+      quindi la giornata per la durata massima, non per la media. */
+  maxTurniPerStallo() {
+    const turni = AppState.config.turni || [];
+    if (!turni.length) return { max: 1, durataMaxMin: 1440, durate: [] };
+    const durata = (t) => {
+      const dal = S.minutiDa(t.inizio), al = S.minutiDa(t.fine);
+      /* un turno a cavallo della mezzanotte dura fino a fine giornata + al */
+      return dal <= al ? (al - dal) : (1440 - dal + al);
+    };
+    const durate = turni.map(t => ({ id: t.id, label: t.label, min: durata(t) }));
+    const durataMaxMin = Math.max.apply(null, durate.map(d => d.min)) || 1440;
+    return { max: Math.max(1, Math.floor(1440 / durataMaxMin)), durataMaxMin, durate };
+  },
+
   /** KPI per turno di un giorno: prenotati, liberi, % occupazione. */
   kpiPerTurno(giornoIso) {
     const data = giornoIso || OGGI_ISO;
@@ -2486,11 +2505,14 @@ const S = {
   media(totale, giorni) { return Math.round(totale / Math.max(1, giorni)); },
 
   /* ---- KPI mappa / dashboard ---- */
-  kpiStalli(dataISO) {
+  /** `turnoId` opzionale: in modalita' turni permette di chiedere i numeri di
+      un turno DIVERSO da quello in corso — e' cio' che serve alla Mappa quando
+      il FM seleziona una fascia. Senza, si legge sempre il turno attivo. */
+  kpiStalli(dataISO, turnoId) {
     const data = dataISO || OGGI_ISO;
     let liberi = 0, occupati = 0, manutenzione = 0;
     AppState.stalli.forEach(s => {
-      const st = S.statoStallo(s.id, data).stato;
+      const st = S.statoStallo(s.id, data, turnoId).stato;
       if (st === 'libero') liberi++;
       else if (st === 'manutenzione' || st === 'bloccato') manutenzione++;
       else occupati++;
@@ -2506,10 +2528,10 @@ const S = {
   },
 
   /** Occupazione per zona — alimenta la mini-mappa della Dashboard */
-  occupazionePerZona(dataISO) {
+  occupazionePerZona(dataISO, turnoId) {
     return AppState.zone.map(z => {
       const stalliZona = AppState.stalli.filter(s => s.zonaId === z.id);
-      const occupati = stalliZona.filter(s => S.statoStallo(s.id, dataISO).stato !== 'libero').length;
+      const occupati = stalliZona.filter(s => S.statoStallo(s.id, dataISO, turnoId).stato !== 'libero').length;
       const tot = stalliZona.length;
       return { id: z.id, nome: z.nome, colore: z.colore, occupati, totale: tot, perc: tot ? Math.round(occupati / tot * 100) : 0 };
     });
@@ -5205,7 +5227,10 @@ global.PC.Sezioni.mappa = {
     const mappa = State.zone.map(z => {
       const stalli = State.stalli.filter(s => s.zonaId === z.id);
       if (!stalli.length) return '';
-      const liberi = stalli.filter(s => S.statoStallo(s.id).stato === 'libero').length;
+      /* Segue il turno SELEZIONATO, non quello in corso: altrimenti
+         scegliendo "Notte" le intestazioni di zona continuerebbero a mostrare
+         i numeri del turno attuale. */
+      const liberi = stalli.filter(s => S.statoStallo(s.id, U.OGGI_ISO, turnoSel ? turnoSel.id : undefined).stato === 'libero').length;
       return `<div class="zone-lbl">${UI.esc(z.nome)} <span class="zone-count">${stalli.length - liberi}/${stalli.length}</span></div>
         <div class="map-row">${stalli.map(s => {
           const stato = S.statoStallo(s.id, U.OGGI_ISO, turnoSel ? turnoSel.id : undefined);
@@ -6205,8 +6230,8 @@ function tabPolicy() {
     stile: 'margin-bottom:14px',
     body: `
       <div class="modalita-toggle">
-        ${[['giornaliera', 'Giornaliera', 'Uno stallo per persona, tutto il giorno'],
-           ['turni', 'Per turni', 'Lo stesso stallo servito da pi\u00f9 turni']]
+        ${[['giornaliera', 'Giornaliera (uffici)', 'Uno stallo per persona, tutto il giorno'],
+           ['turni', 'Per turni (ospedali)', 'Lo stesso stallo servito da pi\u00f9 turni']]
           .map(([v, l, sub]) => `<div class="modalita-opt${State.config.modalitaPrenotazione === v ? ' active' : ''}"${UI.act('set-modalita', { modalita: v })}>
              <div class="modalita-lbl">${l}</div>
              <div class="modalita-sub">${sub}</div>
@@ -6226,6 +6251,13 @@ function tabPolicy() {
         </div>
         ${UI.btn('+ Aggiungi turno', { azione: 'aggiungi-turno' })}
         <div class="sep"></div>
+        ${(() => {
+          const m = S.maxTurniPerStallo();
+          const ore = (min) => (min % 60 === 0 ? (min / 60) + 'h' : Math.floor(min / 60) + 'h' + (min % 60));
+          return UI.setting('Max turni per stallo al giorno',
+            `Calcolato automaticamente: 24h \u00f7 ${ore(m.durataMaxMin)} (turno pi\u00f9 lungo) \u2014 ${turni.length} turn${turni.length === 1 ? 'o' : 'i'} configurat${turni.length === 1 ? 'o' : 'i'}`,
+            `<span class="max-turni-val">${m.max}\u00d7</span>`);
+        })()}
         ${UI.setting('Tolleranza cambio turno',
           `\u00b1${State.config.tolleranzaCambioTurnoMin} min di sovrapposizione consentita tra turni consecutivi`,
           `<div style="display:flex;align-items:center;gap:8px">

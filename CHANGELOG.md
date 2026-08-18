@@ -68,6 +68,65 @@ Generati da PRNG con seed fisso `20260817`: **stabili a ogni reload**.
 
 ## STORICO MODIFICHE
 
+## [18/08/2026] — CODE-17 · Verifica di completezza A–G e lacune colmate
+> Confronto puntuale fra la specifica monolitica CODE-17 (MODIFICHE A–G) e il
+> codice, realizzato come 17A + 17B + 17C. **Tre lacune reali trovate e
+> chiuse**; tutto il resto era già conforme.
+
+### Aggiunto
+- `state.js → Selectors.maxTurniPerStallo()` — **MODIFICA A, punto mancante**:
+  "Max turni per stallo per giorno, calcolato automaticamente (24h / durata
+  turno)". Si divide la giornata per il turno **più lungo**, non per la media:
+  la capacità è limitata dal turno che occupa più a lungo lo stallo. Con 3
+  turni da 8h → 3×; con 2 da 12h → 2×; con 1 da 6h → 4×. Gestisce il turno a
+  cavallo della mezzanotte.
+- `fm/config.js` tab Policy: riga "Max turni per stallo al giorno" con il
+  valore e la formula esplicita ("24h ÷ 8h (turno più lungo) — 3 turni
+  configurati").
+### Modificato
+- `kpiStalli(dataISO, turnoId)` e `occupazionePerZona(dataISO, turnoId)`
+  accettano il turno — **MODIFICA B, punto mancante**: la specifica chiedeva
+  che tenessero conto del turno *selezionato*. Senza il parametro leggevano
+  sempre il turno in corso.
+- Etichette del toggle allineate alla specifica: **"Giornaliera (uffici)"** e
+  **"Per turni (ospedali)"**.
+### Fix
+- **Il contatore per zona nella Mappa ignorava il turno selezionato.**
+  `fm/mappa.js` calcolava i liberi con `statoStallo(s.id)` senza turno:
+  selezionando "Notte" le intestazioni di zona continuavano a mostrare i numeri
+  del turno *corrente*, in contraddizione con le tile sottostanti e con i KPI.
+  Ora seguono la fascia scelta — verificato: Zona C mostra 3/36 · 2/36 · 2/36
+  nei tre turni.
+### Verifica di completezza A–G
+| | Esito |
+|---|---|
+| A — config `modalitaPrenotazione`, `turni`, `tolleranzaCambioTurnoMin` | già conforme (17A) |
+| A — UI toggle, turni configurabili, slider tolleranza | già conforme (17B) |
+| A — **max turni per stallo/giorno** | **mancante → aggiunto** |
+| B — `turnoId`, `statoStallo()` per turno, `prenotaTurno()` | già conforme |
+| B — **`kpiStalli()` / `occupazionePerZona()` per turno** | **mancante → aggiunto** |
+| C — selettore turno, verde/rosso/giallo, KPI per turno, mini-mappa | già conforme (+ fix contatore zona) |
+| D — griglia colorata per turno, tabella capacità | già conforme |
+| E — modal selezione turno, badge nel calendario, messaggio tolleranza | già conforme |
+| F — seed ospedale, toggle Admin, capacità 3× | già conforme |
+| G — lista d'attesa, badge FM, assegnazione manuale | già conforme (17C) |
+### Flussi verificati
+- **TEST A 30/30 ✅** — non-regressione uffici: zero elementi della modalità
+  turni in tutte e 10 le sezioni, Policy col solo toggle e **senza** la riga
+  max turni
+- **TEST B 9/9** — sede, config, ruoli 5/10/5, **max turni 3×**, selettore e
+  KPI per turno, A-07 con 3 prenotazioni in 3 turni da 3 persone diverse,
+  **uno stallo prenotato solo al mattino risulta libero in notte**, contatore
+  di zona che segue il turno selezionato, mini-mappa sul turno corrente
+- **TEST C 7/7** — "Seleziona il tuo turno" con i tre orari, stallo assegnato
+  col motivo, messaggio ±30 min, calendario "C-01 · Mattino", cella FM
+  `t-mattino`, tabella capacità coerente
+- **TEST D 7/7** — tolleranza attiva 14:30→15:30, fuori finestra no, occupato
+  nel turno prenotato, uno stallo su un solo turno mai giallo, tolleranza 0 e
+  60 verificate
+- **TEST E 7/7** — turni saturi → proposta → voce in lista → badge FM →
+  assegnazione manuale → dipendente vede "Assegnato · A-26"
+
 ## [18/08/2026] — CODE-16 rev. · Allineamento alla specifica finale
 > CODE-16 era già in produzione dal commit `493fbbd` (MODIFICHE A–D, TEST
 > A/B/C 23/23 ✅). Questa revisione allinea i tre punti in cui il codice
