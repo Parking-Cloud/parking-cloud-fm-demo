@@ -959,7 +959,7 @@ function buildRichiestePass(dipendenti) {
     note: '',
     codiceMy2N: null,
     esitoIlTs: null,
-    letta: true
+    visto: true
   }];
 }
 
@@ -1829,7 +1829,7 @@ const S = {
   /** Esiti non ancora letti dal dipendente: alimentano il badge nell'hero. */
   notifichePassNonLette(dipendenteId) {
     return AppState.richiestePass.filter(r =>
-      r.dipendenteId === dipendenteId && r.stato !== 'in_attesa' && !r.letta);
+      r.dipendenteId === dipendenteId && r.stato !== 'in_attesa' && !r.visto);
   },
 
   /** Il turno attivo adesso, secondo config.turni.
@@ -2391,7 +2391,10 @@ const A = {
       note: (note || '').trim(),
       codiceMy2N: null,
       esitoIlTs: null,
-      letta: true
+      /* `visto` governa il badge di notifica nell'hero: una richiesta appena
+         inviata non e' una novita' da segnalare, quindi nasce gia' vista.
+         Diventa false solo quando il FM decide. */
+      visto: true
     };
     AppState.richiestePass.push(r);
     Store.emit('richieste');
@@ -2413,14 +2416,18 @@ const A = {
     Object.assign(r, {
       stato: 'approvata', note: note || '',
       codiceMy2N: v.codiceMy2N, visitatoreId: v.id,
-      esitoIlTs: Date.now(), letta: false
+      /* Le date si riscrivono DAL PASS creato, non si danno per scontate:
+         se creaPassVisitatore() normalizzasse l'intervallo, la richiesta
+         mostrerebbe altrimenti giorni diversi da quelli davvero concessi. */
+      dataInizio: v.data, dataFine: v.dataFine || v.data,
+      esitoIlTs: Date.now(), visto: false
     });
     Store.emit('visitatori');
     return v;
   },
   rifiutaRichiestaPass(richiestaId, note) {
     const r = AppState.richiestePass.find(x => x.id === richiestaId);
-    if (r) Object.assign(r, { stato: 'rifiutata', note: note || '', esitoIlTs: Date.now(), letta: false });
+    if (r) Object.assign(r, { stato: 'rifiutata', note: note || '', esitoIlTs: Date.now(), visto: false });
     Store.emit('visitatori');
     return r;
   },
@@ -2429,7 +2436,7 @@ const A = {
   segnaRichiestePassLette(dipendenteId) {
     let n = 0;
     AppState.richiestePass.forEach(r => {
-      if (r.dipendenteId === dipendenteId && r.stato !== 'in_attesa' && !r.letta) { r.letta = true; n++; }
+      if (r.dipendenteId === dipendenteId && r.stato !== 'in_attesa' && !r.visto) { r.visto = true; n++; }
     });
     if (n) Store.emit('richieste');
     return n;

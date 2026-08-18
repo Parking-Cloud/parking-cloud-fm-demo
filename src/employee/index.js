@@ -52,7 +52,7 @@ global.PC.Sezioni.dipendenteView = {
               ? UI.badge(segnalazioniMie.length + ' segnalazione' + (segnalazioniMie.length > 1 ? 'i' : '') + ' in corso', 'amber')
               : UI.badge('Nessuna segnalazione attiva', 'green', true)}
             ${S.notifichePassNonLette(dip.id).map(r => UI.badge(
-                (r.stato === 'approvata' ? '✓ Pass approvato · ' : '✗ Pass rifiutato · ') + r.visitatoreNome,
+                (r.stato === 'approvata' ? '✓ Pass approvato — ' : '✗ Pass rifiutato — ') + r.visitatoreNome,
                 r.stato === 'approvata' ? 'green' : 'red')).join('')}
             <div class="booking-window-chip">📅 Prenota fino a <strong>${anticipo} giorn${anticipo === 1 ? 'o' : 'i'} lavorativ${anticipo === 1 ? 'o' : 'i'}</strong> in anticipo</div>
           </div>
@@ -235,7 +235,7 @@ function sezioneRichieste(dip) {
                 ? `<div class="emp-code-box">
                      <span class="emp-code-lbl">Codice accesso</span>
                      <span class="emp-code-val">${UI.esc(r.codiceMy2N)}</span>
-                     <span class="emp-code-note">valido H24 dal ${UI.esc(U.fmtDM(U.fromISO(r.dataInizio)))} al ${UI.esc(U.fmtDM(U.fromISO(r.dataFine)))}</span>
+                     <span class="emp-code-note">Valido dal ${UI.esc(U.fmtDM(U.fromISO(r.dataInizio)))} al ${UI.esc(U.fmtDM(U.fromISO(r.dataFine)))} · H24</span>
                    </div>`
                 : ''}
               ${r.stato === 'rifiutata' && r.note

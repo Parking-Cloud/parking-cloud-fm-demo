@@ -68,6 +68,48 @@ Generati da PRNG con seed fisso `20260817`: **stabili a ogni reload**.
 
 ## STORICO MODIFICHE
 
+## [18/08/2026] — CODE-16 rev. · Allineamento alla specifica finale
+> CODE-16 era già in produzione dal commit `493fbbd` (MODIFICHE A–D, TEST
+> A/B/C 23/23 ✅). Questa revisione allinea i tre punti in cui il codice
+> divergeva dal testo della specifica finale.
+
+### Modificato
+- **`letta` → `visto`** su `richiestePass`: la specifica nomina esplicitamente
+  `visto: true` come campo che segna l'esito come letto. Rinominato in tutti i
+  punti — seed, `creaRichiestaPass()`, approvazione, rifiuto,
+  `notifichePassNonLette()`, `segnaRichiestePassLette()`. Zero residui.
+- `approvaRichiestaPass()` riscrive **`dataInizio` e `dataFine` dal pass
+  creato**, non le lascia com'erano nella richiesta: se
+  `creaPassVisitatore()` normalizzasse l'intervallo, la richiesta mostrerebbe
+  giorni diversi da quelli davvero concessi.
+- Badge hero: separatore `·` → **`—`** (`✓ Pass approvato — Elena Fabbri`).
+- Box codice: `valido H24 dal … al …` → **`Valido dal … al … · H24`**.
+### Nota su TAB 3
+La terza tab "Lista Attesa" (CODE-17C) è collegata e compare **solo in
+modalità turni**: in giornaliera non esiste una coda per cui mettersi in fila,
+e mostrarla vuota sarebbe rumore. È il comportamento verificato e confermato
+nella precondizione del TEST A di CODE-17C.
+### Nota sulla diagnosi originale
+La specifica indica come problema "campi non modificabili/cliccabili". Verificato
+già in CODE-16: **nessun campo era bloccato** — niente `readonly`, niente
+`disabled`, `pointer-events` regolari, focus e scrittura funzionanti. La causa
+reale era che il modale eccedeva il viewport e il **pulsante di invio finiva
+fuori schermo**. Il fix è stato strutturale (`.modal` a colonna flex con solo
+il corpo scorrevole) e vale per tutti i modali.
+### Flussi verificati
+- **TEST A 32/32 ✅** — checklist completa in giornaliera, nessun downgrade
+- **TEST B 8/8** — 6 campi, orari assenti, date affiancate con default oggi,
+  nessun campo bloccato, focus e scrittura su tutti, **range invertito →
+  errore a schermo e invio bloccato**, correzione → richiesta in FM col banner
+- **TEST C 7/7** — approvazione → My2N identico su richiesta e visitatore,
+  date riscritte dal pass, pass `00:00–23:59` su V-01, badge verde
+  `✓ Pass approvato — Elena Fabbri`, TAB 1 con `Valido dal 19/08 al 21/08 · H24`,
+  **apertura TAB 1 → `visto: true` e badge sparito**
+- **TEST D 4/4** — rifiuto con motivazione, nessun pass creato, badge rosso
+  `✗ Pass rifiutato — Marco Vitali`, TAB 1 senza codice e con il motivo
+- **TEST E 6/6** — 2 tab in giornaliera, **3 tab in modalità turni**, tutte e
+  tre popolate e cliccabili (1 card ciascuna), stato vuoto corretto
+
 ## [18/08/2026] — CODE-17C · Lista d'attesa (solo modalità turni)
 > In `giornaliera` la lista d'attesa non esiste da nessuna parte: senza turni
 > non c'è una coda per cui mettersi in fila.

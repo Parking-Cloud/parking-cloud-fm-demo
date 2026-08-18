@@ -246,8 +246,14 @@ stato incoerente. È l'origine di CODE-03.
   - L'esito va scritto **sulla richiesta**, non solo sul visitatore: il
     dipendente vede la richiesta, non l'anagrafica visitatori. `codiceMy2N`
     esiste quindi in due posti e deve coincidere.
-  - `letta: false` alla decisione del FM, `true` quando il dipendente apre la
-    tab Pass. E' l'unico stato che governa il badge nell'hero.
+  - **`visto: false`** alla decisione del FM, `true` quando il dipendente apre
+    la tab Pass. E' l'unico stato che governa il badge nell'hero. Il campo si
+    chiamava `letta` fino a CODE-16 rev.
+  - L'approvazione riscrive `dataInizio`/`dataFine` **dal pass creato**: la
+    richiesta deve dire cio' che e' stato concesso, non cio' che era stato
+    chiesto.
+  - La sezione "Le mie richieste" ha **3 tab in modalita' turni** e **2 in
+    giornaliera**: la Lista Attesa (F25) non esiste senza turni.
   - `rifiuta-req` **deve** chiamare `Modals._collect()` prima di leggere
     `Modals.form.note`, altrimenti la motivazione si perde in silenzio.
   - Su un pass multi-giorno lo stallo V va scelto libero su **tutti** i giorni,
