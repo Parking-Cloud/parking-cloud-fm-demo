@@ -1304,7 +1304,8 @@ function buildPrenotazioni(dipendenti, stalli) {
         stato: 'completata',
         checkIn: minutesToHHMM(rInt(7 * 60 + 40, 9 * 60 + 30)),
         checkOut: minutesToHHMM(rInt(13 * 60, 18 * 60)),
-        creataDa: 'dipendente'
+        creataDa: 'dipendente',
+        turnoId: null              // null = prenotazione giornaliera
       });
     }
     const swQuanti = Math.round(conf.sw * (0.8 + (idx % 4) * 0.1));
@@ -1313,7 +1314,8 @@ function buildPrenotazioni(dipendenti, stalli) {
       out.push({
         id: nextId('PRE'), dipendenteId: dip.id, data: iso, tipo: 'sw',
         stalloId: null, stato: 'completata', checkIn: null, checkOut: null,
-        creataDa: 'dipendente'
+        creataDa: 'dipendente',
+        turnoId: null
       });
     }
   });
@@ -1354,7 +1356,8 @@ function buildPrenotazioni(dipendenti, stalli) {
         stato,                                 // 'attiva' | 'completata' | 'annullata'
         checkIn:  stato !== 'attiva' ? minutesToHHMM(rInt(7 * 60 + 40, 9 * 60 + 30)) : null,
         checkOut: stato === 'completata' ? minutesToHHMM(rInt(13 * 60, 17 * 60)) : null,
-        creataDa: 'dipendente'
+        creataDa: 'dipendente',
+        turnoId: null
       });
       return true;
     };
@@ -1421,7 +1424,8 @@ function applicaPatternEvidenza(prenotazioni, dipendenti, stalli) {
         stalloId,
         stato: 'attiva',
         checkIn: null, checkOut: null,
-        creataDa: 'dipendente'
+        creataDa: 'dipendente',
+        turnoId: null
       });
     });
   });
@@ -1696,6 +1700,16 @@ function buildConfig() {
       dominioEmail: SEDE.dominioEmail,
       helpdesk: SEDE.helpdesk
     },
+    /* Modalita' di prenotazione. 'giornaliera' e' il comportamento storico e
+       resta il default: la modalita' 'turni' e' dichiarata qui ma NON e'
+       ancora attiva (CODE-17A e' sola infrastruttura). */
+    modalitaPrenotazione: 'giornaliera',   // 'giornaliera' | 'turni'
+    turni: [
+      { id: 'mattino',    label: 'Mattino',    inizio: '07:00', fine: '15:00' },
+      { id: 'pomeriggio', label: 'Pomeriggio', inizio: '15:00', fine: '23:00' },
+      { id: 'notte',      label: 'Notte',      inizio: '23:00', fine: '07:00' }
+    ],
+    tolleranzaCambioTurnoMin: 30,
     prenotazioni: {
       finestraGiorniLavorativi: 10, // finestra prenotazione dipendente, in giorni lavorativi (oggi incluso)
       noShowMinuti: 30,
@@ -1924,6 +1938,18 @@ const S = {
 
   /* ---- STATO STALLO: il cuore della coerenza inter-sezione ----
      Restituisce { stato, cls, label, occupanteNome, prenotazioneId, accessoId } */
+  /** Punto d'innesto della modalita' a turni dentro statoStallo().
+      In 'giornaliera' accetta ogni prenotazione: comportamento storico.
+      In 'turni' oggi accetta ANCORA tutto — e' uno STUB voluto: CODE-17A e'
+      sola infrastruttura. Il filtro reale (p.turnoId === turno attivo) arriva
+      con CODE-17B, insieme alla UI che permette di scegliere un turno.
+      Attivarlo prima farebbe sparire dalla mappa tutte le prenotazioni
+      esistenti, che hanno turnoId === null. */
+  turnoCompatibile(prenotazione) {
+    if (AppState.config.modalitaPrenotazione !== 'turni') return true;
+    return true;   // STUB CODE-17A — non filtrare finche' la UI non esiste
+  },
+
   statoStallo(stalloId, dataISO) {
     const st = S.stallo(stalloId);
     if (!st) return { stato: 'libero', cls: 'ms-free', label: 'Libero' };
@@ -1955,7 +1981,8 @@ const S = {
     }
 
     /* 2. prenotazione attiva del giorno */
-    const pre = AppState.prenotazioni.find(p => p.stalloId === stalloId && p.data === data && p.tipo === 'ufficio' && p.stato === 'attiva');
+    const pre = AppState.prenotazioni.find(p => p.stalloId === stalloId && p.data === data
+      && p.tipo === 'ufficio' && p.stato === 'attiva' && S.turnoCompatibile(p));
     if (pre) {
       const dip = S.dipendente(pre.dipendenteId);
       return { stato: 'prenotato', cls: 'ms-occ', label: 'Prenotato', occupanteNome: dip ? dip.nomeCompleto : '—', prenotazioneId: pre.id, dipendenteId: pre.dipendenteId, stalloId };
@@ -2302,6 +2329,33 @@ const S = {
     return AppState.richiestePass.filter(r =>
       r.dipendenteId === dipendenteId && r.stato !== 'in_attesa' && !r.letta);
   },
+
+  /** Il turno attivo adesso, secondo config.turni.
+      `quando` esiste solo per i test — senza argomento usa l'ora corrente,
+      come da specifica. Accetta una Date oppure i minuti dalla mezzanotte:
+      e' l'unico modo di verificare "alle 02:00" senza spostare l'orologio.
+      Se nessun turno copre l'ora, restituisce il primo. */
+  turnoCorrente(quando) {
+    const turni = AppState.config.turni || [];
+    if (!turni.length) return null;
+    const daData = (d) => d.getHours() * 60 + d.getMinutes();
+    const ora = (quando === undefined || quando === null) ? daData(new Date())
+      : (quando instanceof Date ? daData(quando) : Number(quando));
+    const min = (hhmm) => {
+      const [h, m] = String(hhmm).split(':').map(Number);
+      return h * 60 + (m || 0);
+    };
+    const trovato = turni.find(t => {
+      const dal = min(t.inizio), al = min(t.fine);
+      /* Il turno di notte attraversa la mezzanotte: 23:00-07:00 va letto come
+         "dalle 23 in poi OPPURE prima delle 7", non come intervallo vuoto. */
+      return dal <= al ? (ora >= dal && ora < al) : (ora >= dal || ora < al);
+    });
+    return trovato || turni[0];
+  },
+
+  /** Il turno con quell'id, o null. */
+  turno(turnoId) { return (AppState.config.turni || []).find(t => t.id === turnoId) || null; },
 
   /* ---- segnalazioni ---- */
   segnalazioniAttive() {
@@ -2661,7 +2715,10 @@ const A = {
     const p = {
       id: nextId('PRE'), dipendenteId, data: dataISO, tipo,
       stalloId: spot, stato: 'attiva', checkIn: null, checkOut: null,
-      creataDa: creataDa || 'dipendente'
+      creataDa: creataDa || 'dipendente',
+      /* anche le prenotazioni create a runtime nascono giornaliere: senza
+         questo campo le nuove differirebbero da quelle del seed */
+      turnoId: null
     };
     AppState.prenotazioni.push(p);
     Store.emit('prenotazioni');
@@ -2971,6 +3028,30 @@ const A = {
     Store.emit('config');
   },
   setNotifica(chiave, valore) { AppState.config.notifiche[chiave] = valore; Store.emit('config'); },
+
+  /* ---- MODALITA' A TURNI (CODE-17A: infrastruttura, UI in CODE-17B) ---- */
+  setModalitaPrenotazione(modalita) {
+    AppState.config.modalitaPrenotazione = modalita;
+    Store.emit('config');
+  },
+  setTurni(turniArray) {
+    AppState.config.turni = turniArray;
+    Store.emit('config');
+  },
+  setTolleranzaCambioTurno(minuti) {
+    AppState.config.tolleranzaCambioTurnoMin = minuti;
+    Store.emit('config');
+  },
+  /** Prenotazione con turno. NON duplica prenota(): la chiama e le aggiunge il
+      turno, cosi' assegnazione dello stallo, sostituzione di una prenotazione
+      esistente e chiusura degli accessi restano in un posto solo. */
+  prenotaTurno({ dipendenteId, stalloId, giornoIso, turnoId }) {
+    const p = A.prenota({ dipendenteId, dataISO: giornoIso, tipo: 'ufficio', stalloId });
+    if (!p || p.errore) return p;
+    p.turnoId = turnoId || null;
+    Store.emit('prenotazioni');
+    return p;
+  },
 
   /* ---- destinatari delle notifiche segnalazioni ---- */
   addEmailDestinatario(email) {

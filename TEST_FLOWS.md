@@ -30,6 +30,8 @@ stato incoerente. È l'origine di CODE-03.
 | `puoRichiederePass` | topbar `employee/index.js`, colonna Pass vis. in `fm/dipendenti.js`, toggle in `dip-det`, F18 |
 | `richiestePass` (struttura) | `emp-richiedi-pass`, `req-pass`, `creaRichiestaPass`, `approvaRichiestaPass`, `rifiutaRichiestaPass`, sezione "Le mie richieste", F20 |
 | `visitatori.dataFine` | `statoStallo` (range), `creaPassVisitatore` (scelta stallo), F20 |
+| `config.modalitaPrenotazione` / `config.turni` | `turnoCorrente`, `turnoCompatibile`, `statoStallo`, `prenotaTurno` — **CODE-17A e' sola infrastruttura: lo stub in `turnoCompatibile()` deve restare inerte finche' CODE-17B non introduce la UI, altrimenti le prenotazioni con `turnoId: null` spariscono dalla mappa** |
+| `prenotazioni.turnoId` | quattro punti di creazione: `buildPrenotazioni` (x3), `applicaPatternEvidenza`, `prenota()`. Chi aggiunge un campo alla prenotazione deve toccarli tutti |
 | stato di un dipendente (`sospendiDipendente`) | `annullaPrenotazione`, `statoStallo`, `righeSettimanaFM`, `kpiDipendenti`, F19 |
 | `utentiPiattaforma` | `trovaAccountPerEmail`, `utenteCorrente`, `facilityManager`, F12 |
 | `PERMISSIONS` | sidebar e tab in `index.html`, `Sezioni.*`, F12 |

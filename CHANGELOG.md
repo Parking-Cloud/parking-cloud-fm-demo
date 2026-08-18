@@ -68,6 +68,60 @@ Generati da PRNG con seed fisso `20260817`: **stabili a ogni reload**.
 
 ## STORICO MODIFICHE
 
+## [18/08/2026] — CODE-17A · Modalità a turni: sola infrastruttura
+> **Blocco di sola infrastruttura: zero modifiche alla UI.** La modalità
+> `giornaliera` resta il default e il comportamento esistente non cambia in
+> nessun punto. La modalità `turni` è dichiarata ma **non attiva**: UI e seed
+> ospedale arrivano con CODE-17B, la lista d'attesa con CODE-17C.
+
+### Aggiunto
+- `state.js → buildConfig()`: `modalitaPrenotazione: 'giornaliera'`,
+  `turni` (mattino 07:00–15:00 · pomeriggio 15:00–23:00 · notte 23:00–07:00),
+  `tolleranzaCambioTurnoMin: 30`
+- `state.js`: campo `turnoId: null` su **tutte** le prenotazioni — le 2.071 del
+  seed e quelle create a runtime. `null` significa "giornaliera".
+- `state.js → Selectors.turnoCorrente(quando)`: il turno attivo secondo
+  l'orario. Gestisce il turno di notte a cavallo della mezzanotte leggendo
+  23:00–07:00 come "dalle 23 in poi **oppure** prima delle 7".
+  `quando` è opzionale ed esiste solo per i test: senza argomento usa
+  `new Date()`, come da specifica.
+- `state.js → Selectors.turno(id)` e `Selectors.turnoCompatibile(p)`
+- `state.js → Actions`: `setModalitaPrenotazione()`, `setTurni()`,
+  `setTolleranzaCambioTurno()`, `prenotaTurno({ dipendenteId, stalloId,
+  giornoIso, turnoId })`
+### Modificato
+- `statoStallo()`: la ricerca della prenotazione attiva passa dal predicato
+  `S.turnoCompatibile(p)`. In `giornaliera` accetta tutto — comportamento
+  identico a prima. In `turni` **oggi accetta comunque tutto**: è uno stub
+  voluto, il seggio dove CODE-17B innesterà il filtro per `turnoId`.
+### Fix
+- **Quarta sorgente di prenotazioni non intercettata.** `applicaPatternEvidenza()`
+  crea 45 prenotazioni proprie (i pattern dei dipendenti in evidenza) e non era
+  fra i tre punti di creazione noti: 45 record su 2.071 restavano senza
+  `turnoId`. Trovato dalla verifica del PUNTO 2, corretto.
+### Note tecniche
+- `prenotaTurno()` **non duplica** `prenota()`: la chiama e aggiunge il turno.
+  Assegnazione dello stallo, sostituzione di una prenotazione esistente e
+  chiusura degli accessi restano in un posto solo.
+- Perché lo stub deve restare inerte: tutte le prenotazioni esistenti hanno
+  `turnoId === null`. Attivare il filtro per turno prima che la UI permetta di
+  sceglierne uno le farebbe sparire in blocco dalla mappa.
+### Flussi verificati
+- PUNTO 1: config senza eccezioni, `modalitaPrenotazione === 'giornaliera'`,
+  3 turni con id/label/inizio/fine esatti, tolleranza 30
+- PUNTO 2: 0 prenotazioni senza il campo, 0 con valore diverso da `null`,
+  incluse quelle create a runtime
+- PUNTO 3: `statoStallo()` confrontato con la baseline presa **prima** della
+  modifica — 5 stalli campione e poi **tutti i 156 stalli × 3 giorni
+  (468 combinazioni): 0 differenze**. Forzando `modalitaPrenotazione='turni'`
+  l'output resta identico, come deve essere per uno stub.
+- PUNTO 4: le 4 actions esistono, scrivono e ripristinano; `prenotaTurno`
+  propaga il turno sia con stallo automatico sia con stallo esplicito
+- PUNTO 5: 10:00 → mattino · 18:00 → pomeriggio · 02:00 → notte. Bordi
+  verificati (07:00, 14:59, 15:00, 22:59, 23:00, 00:00, 06:59) e copertura
+  completa: **tutti i 1.440 minuti del giorno hanno un turno, 480 ciascuno**
+- `ripristinaDemo()` riporta modalità, turni, tolleranza e `turnoId`
+
 ## [18/08/2026] — CODE-16 · Pass a range di date, notifiche e "Le mie richieste"
 ### Aggiunto
 - `employee/index.js`: sezione **"Le mie richieste"** con due tab —
@@ -519,6 +573,29 @@ prima (3 voci)                          dopo (4 voci)
 
 ---
 
+## VERIFICA DI REGRESSIONE — 18/08/2026 (dopo CODE-17A)
+
+Checklist completa in modalità `giornaliera` sul bundle rigenerato:
+**52 ✅ · 0 ❌ · 0 ⚠️**, più 33 verifiche dei cinque punti.
+
+Aggiunto un gruppo **PRECONDIZIONE**: modalità di default `giornaliera`,
+3 turni presenti in config, e **nessuna occorrenza della parola "turno/turni"
+in nessuna delle 10 sezioni FM né nelle 4 tab di Config** — la prova che il
+blocco è davvero sola infrastruttura.
+
+Un ❌ era un artefatto del test: avevo attivato l'account con la password
+`Demo1!` (6 caratteri) mentre la schermata richiede **almeno 8**. Con
+`Demo12345!` l'attivazione riesce. La validazione funzionava, l'input era
+sbagliato.
+
+> Lezione di metodo, aggiunta a N04: **la baseline di un confronto "prima/dopo"
+> va presa prima di qualunque test che muti lo stato**. Al primo giro avevo
+> messo il confronto di `statoStallo()` dopo una verifica che creava e
+> annullava una prenotazione: `prenota()` sostituisce quella esistente per lo
+> stesso giorno, quindi il confronto trovava differenze causate dal test stesso.
+
+---
+
 ## VERIFICA DI REGRESSIONE — 18/08/2026 (dopo CODE-16)
 
 Checklist completa sul bundle rigenerato: **49 ✅ · 0 ❌ · 0 ⚠️**, più i 23
@@ -662,5 +739,5 @@ Nessun bug funzionale aperto (N05 risolto in CODE-14, N06 in CODE-10). Elementi 
 | N01 | Debito lessicale | In `state.js` le zone A/B/C hanno `colore: 'gold'`, residuo della palette precedente. È mappato a `var(--blue)` e **non produce alcun oro a schermo**. Rinominarlo richiede di toccare `dashboard.js → coloreBarra()`, dove il valore fa cadere la mini-mappa sul colore a semaforo. |
 | N02 | Limite noto | La demo è in-memory: ogni reload riparte dal seed. Nessuna persistenza (voluto). |
 | N03 | Limite noto | `dist/parking_cloud_demo.html` dipende da Google Fonts per Nunito. Offline usa il fallback Trebuchet MS. |
-| N04 | Trappola nei test | (a) I nodi DOM raccolti prima di una mutazione diventano orfani: ri-cerca l'elemento a ogni iterazione. (b) Il server locale puo' servire JS **in cache** dopo una modifica: verifica con `fetch(url,{cache:'no-store'})` o rigenera il bundle. (c) `location.reload()` non ricarica lo snapshot `data:` del bundle: lo stato JS sopravvive fra i test. (d) Lo stato UI (tab attiva, sessione, filtri) **persiste fra un check e il successivo**: reimpostalo, o misuri la coda del test precedente. Non tutti i form usano `data-field` — Modifica sede usa id (`#sede-posti`) ed è dietro `toggle-edit-sede`. (e) Prima di misurare geometrie o hit-testing verifica `innerHeight > 0`: nel pannello di anteprima puo' essere 0, e allora ogni `vh` collassa. (f) Non tutto cio' che sembra una tabella lo e': la griglia FM Prenotazioni usa `.bk-row`, la mappa dipendente `.espot` (non `.mspot`), e le card giorno non prenotabili non hanno `data-giorno-iso` perche' non sono cliccabili. |
+| N04 | Trappola nei test | (a) I nodi DOM raccolti prima di una mutazione diventano orfani: ri-cerca l'elemento a ogni iterazione. (b) Il server locale puo' servire JS **in cache** dopo una modifica: verifica con `fetch(url,{cache:'no-store'})` o rigenera il bundle. (c) `location.reload()` non ricarica lo snapshot `data:` del bundle: lo stato JS sopravvive fra i test. (d) Lo stato UI (tab attiva, sessione, filtri) **persiste fra un check e il successivo**: reimpostalo, o misuri la coda del test precedente. Non tutti i form usano `data-field` — Modifica sede usa id (`#sede-posti`) ed è dietro `toggle-edit-sede`. (e) Prima di misurare geometrie o hit-testing verifica `innerHeight > 0`: nel pannello di anteprima puo' essere 0, e allora ogni `vh` collassa. (f) La baseline di un confronto prima/dopo va presa PRIMA di ogni test che muti lo stato: un test che crea e annulla una prenotazione altera cio' che il confronto successivo misura. (g) Non tutto cio' che sembra una tabella lo e': la griglia FM Prenotazioni usa `.bk-row`, la mappa dipendente `.espot` (non `.mspot`), e le card giorno non prenotabili non hanno `data-giorno-iso` perche' non sono cliccabili. |
 | ~~N05~~ | ✅ Risolto in CODE-14 | "Numero posti" in Modifica sede crea/rimuove stalli reali. Ora la riduzione passa da un modale di conferma con l'anteprima esatta di stalli e prenotazioni impattati, ed è reversibile con "Ripristina dati demo". |
