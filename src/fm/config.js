@@ -371,6 +371,9 @@ UI.on('approva-req', d => {
   UI.toast(`✓ Approvato · codice My2N ${v.codiceMy2N} inviato a ${v.email}`);
 });
 UI.on('rifiuta-req', d => {
+  /* _collect() PRIMA di leggere il form: senza, la motivazione scritta dal FM
+     non arriva mai alla richiesta e il dipendente vede un rifiuto senza motivo. */
+  Modals._collect();
   const r = A.rifiutaRichiestaPass(d.richiestaId, Modals.form.note);
   Modals.close();
   UI.toast(`Richiesta rifiutata · ${S.nomePersona(r.dipendenteId)} notificato`);

@@ -280,8 +280,8 @@ Modals.register('req-pass', {
         UI.infoBox('Visitatore', UI.esc(r.visitatoreNome)),
         UI.infoBox('Email', `<span style="font-size:12px">${UI.esc(r.visitatoreEmail)}</span>`),
         UI.infoBox('Azienda', UI.esc(r.azienda)),
-        UI.infoBox('Data', UI.esc(U.fmtMedium(U.fromISO(r.data)))),
-        UI.infoBox('Orario richiesto', `${UI.esc(r.oraInizio)} – ${UI.esc(r.oraFine)}`, true),
+        UI.infoBox('Dal', UI.esc(U.fmtMedium(U.fromISO(r.dataInizio)))),
+        UI.infoBox('Al', UI.esc(U.fmtMedium(U.fromISO(r.dataFine))) + ' <span class="muted" style="font-size:11px">· H24</span>'),
         UI.infoBox('Stato', UI.badge(r.stato === 'in_attesa' ? 'In attesa' : r.stato, r.stato === 'in_attesa' ? 'amber' : 'green'))
       ])
       + UI.campo('Note FM', UI.input({ placeholder: 'Note opzionali…' }).replace('<input', '<input' + fld('note')));
@@ -672,21 +672,29 @@ Modals.register('emp-segnala', {
     nemmeno reso agli altri. */
 Modals.register('emp-richiedi-pass', {
   size: 'modal-lg',
-  initForm: () => ({ data: U.OGGI_ISO, oraInizio: '09:00', oraFine: '18:00' }),
+  initForm: () => ({ dataInizio: U.OGGI_ISO, dataFine: U.OGGI_ISO }),
   titolo: () => '🪪 Richiedi Pass Visitatore',
   body: () => {
     const d = S.dipendenteCorrente();
     if (!d) return UI.alert('Sessione non valida.', 'warn');
-    return UI.alert('La richiesta viene inoltrata al Facility Manager, che la approva o la rifiuta. Il pass non è attivo finché non viene approvato.', 'info')
+    const dal = f('dataInizio', U.OGGI_ISO);
+    const al  = f('dataFine', U.OGGI_ISO);
+    const invertito = al < dal;
+    const giorni = invertito ? 0
+      : Math.round((U.fromISO(al) - U.fromISO(dal)) / 86400000) + 1;
+    return UI.alert('Il Facility Manager approva o rifiuta la richiesta. Il pass non è attivo finché non viene approvato.', 'info')
       + `<div class="form-grid2">
-        ${UI.campo('Nome visitatore *', UI.input({ placeholder: 'Nome e cognome' }).replace('<input', '<input' + fld('visitatoreNome')))}
-        ${UI.campo('Email visitatore *', UI.input({ tipo: 'email', placeholder: 'nome@azienda.com' }).replace('<input', '<input' + fld('visitatoreEmail')))}
-        ${UI.campo('Azienda', UI.input({ placeholder: 'Azienda di provenienza' }).replace('<input', '<input' + fld('azienda')))}
-        ${UI.campo('Data', UI.input({ tipo: 'date', valore: f('data') }).replace('<input', '<input' + fld('data')))}
-        ${UI.campo('Ora inizio', UI.input({ tipo: 'time', valore: f('oraInizio') }).replace('<input', '<input' + fld('oraInizio')))}
-        ${UI.campo('Ora fine', UI.input({ tipo: 'time', valore: f('oraFine') }).replace('<input', '<input' + fld('oraFine')))}
+        ${UI.campo('Nome visitatore *', UI.input({ valore: f('visitatoreNome', ''), placeholder: 'Nome e cognome', focusKey: 'req-nome' }).replace('<input', '<input' + fld('visitatoreNome')))}
+        ${UI.campo('Email visitatore *', UI.input({ tipo: 'email', valore: f('visitatoreEmail', ''), placeholder: 'nome@azienda.com', focusKey: 'req-email' }).replace('<input', '<input' + fld('visitatoreEmail')))}
+        ${UI.campo('Azienda', UI.input({ valore: f('azienda', ''), placeholder: 'Azienda di provenienza', focusKey: 'req-azienda' }).replace('<input', '<input' + fld('azienda')))}
+        <div></div>
+        ${UI.campo('Data inizio *', UI.input({ tipo: 'date', valore: dal, azione: 'refresh-modale', focusKey: 'req-dal' }).replace('<input', '<input' + fld('dataInizio')))}
+        ${UI.campo('Data fine *', UI.input({ tipo: 'date', valore: al, min: dal, azione: 'refresh-modale', focusKey: 'req-al' }).replace('<input', '<input' + fld('dataFine')))}
       </div>`
-      + UI.campo('Note per il FM', `<textarea class="form-textarea"${fld('note')} placeholder="Motivo della visita, indicazioni particolari…"></textarea>`);
+      + (invertito
+          ? UI.alert('La <strong>data fine</strong> non può precedere la data inizio.', 'danger')
+          : `<div class="form-hint">Pass valido <strong>H24</strong> per ${giorni} giorn${giorni === 1 ? 'o' : 'i'}, dal ${UI.esc(U.fmtDM(U.fromISO(dal)))} al ${UI.esc(U.fmtDM(U.fromISO(al)))}.</div>`)
+      + UI.campo('Note per il FM', `<textarea class="form-textarea"${fld('note')} placeholder="Motivo della visita, indicazioni particolari…">${UI.esc(f('note', ''))}</textarea>`);
   },
   footer: () => chiudi() + ok('Invia richiesta', 'emp-invia-richiesta-pass')
 });

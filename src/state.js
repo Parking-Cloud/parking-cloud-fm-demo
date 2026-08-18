@@ -939,10 +939,13 @@ function buildRichiestePass(dipendenti) {
     visitatoreNome: 'Andrea Bianchi',
     visitatoreEmail: 'a.bianchi@korepartners.it',
     azienda: 'Kore Partners',
-    data: toISO(addDays(OGGI, 2)),
-    oraInizio: '10:00', oraFine: '13:00',
+    dataInizio: toISO(addDays(OGGI, 2)),
+    dataFine:   toISO(addDays(OGGI, 2)),
     stato: 'in_attesa',
-    note: ''
+    note: '',
+    codiceMy2N: null,
+    esitoIlTs: null,
+    letta: true
   }];
 }
 
@@ -1009,6 +1012,7 @@ const AppState = {
     attivazione: null,           // { utenteId, tipo, invitatoDa } per view-activate
     fmWeekOffset: 0,
     empWeekOffset: 0,
+    empRichiesteTab: 'pass',   // 'pass' | 'segnalazioni'
     filtri: {
       accessi:    { q: '', tipo: '', stato: '', stallo: '', anomalia: false, aperto: false },
       dipendenti: { q: '' }
@@ -1112,7 +1116,11 @@ const S = {
         };
       }
       /* visitatore atteso su stallo di zona V */
-      const vis = AppState.visitatori.find(v => v.stalloId === stalloId && v.data === data && v.stato === 'atteso');
+      /* Il pass puo' coprire piu' giorni: `data` e' l'inizio, `dataFine` la
+         fine (assente sui pass di un solo giorno). Confrontare solo `v.data`
+         lascerebbe lo stallo libero dal secondo giorno in poi. */
+      const vis = AppState.visitatori.find(v => v.stalloId === stalloId && v.stato === 'atteso'
+        && v.data <= data && (v.dataFine || v.data) >= data);
       if (vis) return { stato: 'prenotato', cls: 'ms-occ', label: 'Riservato — visitatore atteso', occupanteNome: vis.nome, visitatoreId: vis.id, stalloId };
     }
 
@@ -1443,6 +1451,26 @@ const S = {
   dataPrenotabile(d) {
     const g = startOfDay(d);
     return isLavorativo(g) && g >= OGGI && g <= S.ultimaDataPrenotabile();
+  },
+
+  /** Richieste pass inoltrate da un dipendente, dalla piu' recente. */
+  richiestePassDipendente(dipendenteId) {
+    return AppState.richiestePass
+      .filter(r => r.dipendenteId === dipendenteId)
+      .slice()
+      .sort((a, b) => (b.esitoIlTs || 0) - (a.esitoIlTs || 0) || b.id.localeCompare(a.id));
+  },
+  /** Segnalazioni aperte da un dipendente, dalla piu' recente. */
+  segnalazioniDipendente(dipendenteId) {
+    return AppState.segnalazioni
+      .filter(s => s.segnalanteId === dipendenteId)
+      .slice()
+      .sort((a, b) => b.apertaIlTs - a.apertaIlTs);
+  },
+  /** Esiti non ancora letti dal dipendente: alimentano il badge nell'hero. */
+  notifichePassNonLette(dipendenteId) {
+    return AppState.richiestePass.filter(r =>
+      r.dipendenteId === dipendenteId && r.stato !== 'in_attesa' && !r.letta);
   },
 
   /* ---- segnalazioni ---- */
@@ -1896,14 +1924,29 @@ const A = {
   },
 
   /* ---- VISITATORI ---- */
-  creaPassVisitatore({ nome, azienda, email, dataISO, oraInizio, oraFine, referenteId, stalloId }) {
+  creaPassVisitatore({ nome, azienda, email, dataISO, dataFineISO, oraInizio, oraFine, referenteId, stalloId }) {
     const data = dataISO || OGGI_ISO;
-    const spot = stalloId || (AppState.stalli.find(s => s.zonaId === 'V' && S.statoStallo(s.id, data).stato === 'libero') || {}).id || null;
+    const fine = dataFineISO && dataFineISO > data ? dataFineISO : null;
+    /* Su un pass multi-giorno lo stallo deve essere libero TUTTI i giorni:
+       sceglierlo guardando solo il primo produrrebbe un doppio uso al secondo. */
+    const giorni = [data];
+    if (fine) { for (let d = addDays(fromISO(data), 1); toISO(d) <= fine; d = addDays(d, 1)) giorni.push(toISO(d)); }
+    /* Due controlli distinti, perche' coprono buchi diversi:
+       - statoStallo() vede accessi e prenotazioni, ma valuta i visitatori solo
+         per OGGI: sulle date future non saprebbe di un altro pass gia' emesso;
+       - la sovrapposizione fra pass va quindi verificata a mano sul range,
+         altrimenti due pass futuri riceverebbero entrambi lo stesso V-01. */
+    const occupatoDaAltroPass = (id) => AppState.visitatori.some(v =>
+      v.stalloId === id && v.stato !== 'revocato'
+      && v.data <= (fine || data) && (v.dataFine || v.data) >= data);
+    const spot = stalloId || (AppState.stalli.find(s => s.zonaId === 'V'
+      && giorni.every(g => S.statoStallo(s.id, g).stato === 'libero')
+      && !occupatoDaAltroPass(s.id)) || {}).id || null;
     const v = {
       id: nextId('VIS'),
       passId: 'VIS-' + String(AppState.visitatori.length + 41).padStart(4, '0'),
       nome, azienda: azienda || '—', email,
-      stalloId: spot, data, oraInizio: oraInizio || '09:00', oraFine: oraFine || '18:00',
+      stalloId: spot, data, dataFine: fine, oraInizio: oraInizio || '09:00', oraFine: oraFine || '18:00',
       stato: 'atteso', zonaErrata: false, scaduto: false,
       codiceMy2N: String(Math.floor(1000 + Math.random() * 9000)),
       referenteId: referenteId || 'USR-0002',
@@ -1941,37 +1984,74 @@ const A = {
 
   /** Richiesta di pass inoltrata dal dipendente al FM. Nasce sempre
       'in_attesa': e' il FM a deciderne l'esito da Dipendenti -> req-pass. */
-  creaRichiestaPass({ dipendenteId, visitatoreNome, visitatoreEmail, azienda, data, oraInizio, oraFine, note }) {
+  creaRichiestaPass({ dipendenteId, visitatoreNome, visitatoreEmail, azienda, dataInizio, dataFine, note }) {
+    const dal = dataInizio || OGGI_ISO;
+    const al  = dataFine || dal;
     const r = {
       id: nextId('REQ'),
       dipendenteId,
       visitatoreNome: (visitatoreNome || '').trim(),
       visitatoreEmail: (visitatoreEmail || '').trim(),
       azienda: (azienda || '').trim() || '—',
-      data: data || OGGI_ISO,
-      oraInizio: oraInizio || '09:00',
-      oraFine: oraFine || '18:00',
+      /* il pass approvato vale H24 su tutti i giorni del range: non si
+         memorizzano orari, solo l'intervallo di date */
+      dataInizio: dal,
+      dataFine: al < dal ? dal : al,
       stato: 'in_attesa',
-      note: (note || '').trim()
+      note: (note || '').trim(),
+      codiceMy2N: null,
+      esitoIlTs: null,
+      letta: true
     };
     AppState.richiestePass.push(r);
     Store.emit('richieste');
     return r;
   },
 
+  /** Approva: crea il pass H24 sul range e riporta l'esito SULLA RICHIESTA.
+      Il codice My2N va scritto anche qui, non solo sul visitatore: il
+      dipendente vede la richiesta, non l'anagrafica visitatori. */
   approvaRichiestaPass(richiestaId, note) {
     const r = AppState.richiestePass.find(x => x.id === richiestaId);
     if (!r) return null;
-    r.stato = 'approvata'; r.note = note || '';
-    const v = A.creaPassVisitatore({ nome: r.visitatoreNome, azienda: r.azienda, email: r.visitatoreEmail, dataISO: r.data, oraInizio: r.oraInizio, oraFine: r.oraFine, referenteId: r.dipendenteId });
+    const v = A.creaPassVisitatore({
+      nome: r.visitatoreNome, azienda: r.azienda, email: r.visitatoreEmail,
+      dataISO: r.dataInizio, dataFineISO: r.dataFine,
+      oraInizio: '00:00', oraFine: '23:59',
+      referenteId: r.dipendenteId
+    });
+    Object.assign(r, {
+      stato: 'approvata', note: note || '',
+      codiceMy2N: v.codiceMy2N, visitatoreId: v.id,
+      esitoIlTs: Date.now(), letta: false
+    });
     Store.emit('visitatori');
     return v;
   },
   rifiutaRichiestaPass(richiestaId, note) {
     const r = AppState.richiestePass.find(x => x.id === richiestaId);
-    if (r) { r.stato = 'rifiutata'; r.note = note || ''; }
+    if (r) Object.assign(r, { stato: 'rifiutata', note: note || '', esitoIlTs: Date.now(), letta: false });
     Store.emit('visitatori');
     return r;
+  },
+
+  /** Il dipendente ha aperto la tab Pass: gli esiti non sono piu' "novita'". */
+  segnaRichiestePassLette(dipendenteId) {
+    let n = 0;
+    AppState.richiestePass.forEach(r => {
+      if (r.dipendenteId === dipendenteId && r.stato !== 'in_attesa' && !r.letta) { r.letta = true; n++; }
+    });
+    if (n) Store.emit('richieste');
+    return n;
+  },
+
+  setEmpRichiesteTab(tab) {
+    AppState.ui.empRichiesteTab = tab;
+    if (tab === 'pass') {
+      const d = S.dipendenteCorrente();
+      if (d) A.segnaRichiestePassLette(d.id);
+    }
+    Store.emit('emp-tab');
   },
 
   /* ---- SEGNALAZIONI ---- */

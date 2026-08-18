@@ -542,17 +542,22 @@ input[type=range]{accent-color:var(--blue)}
 .modal-overlay.hidden{display:none}
 .modal{
   background:var(--bg-card);border-radius:var(--r-xl);width:520px;max-width:95vw;max-height:90vh;
-  overflow-y:auto;box-shadow:var(--shadow-lg);animation:slideUp .2s ease;
+  box-shadow:var(--shadow-lg);animation:slideUp .2s ease;
+  /* Colonna flex con SOLO il corpo scorrevole: cosi' titolo e pulsanti di
+     conferma restano sempre visibili. Con overflow sull'intero .modal, su
+     finestre basse il pulsante di conferma finiva sotto il bordo schermo e
+     sembrava che il form fosse "bloccato". */
+  display:flex;flex-direction:column;overflow:hidden;
 }
 .modal.modal-lg{width:680px}
 .modal.modal-xl{width:880px}
 @keyframes slideUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
-.modal-hd{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border);gap:10px}
+.modal-hd{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border);gap:10px;flex:0 0 auto}
 .modal-title{font-size:16px;font-weight:800;color:var(--text)}
 .modal-close{background:none;border:none;font-size:19px;cursor:pointer;color:var(--text-muted);padding:4px 7px;border-radius:var(--r-sm);transition:.15s;line-height:1}
 .modal-close:hover{background:var(--bg-raised);color:var(--text)}
-.modal-body{padding:18px 20px}
-.modal-footer{padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;background:var(--bg-raised);border-radius:0 0 var(--r-xl) var(--r-xl)}
+.modal-body{padding:18px 20px;overflow-y:auto;flex:1 1 auto;min-height:0}
+.modal-footer{padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;background:var(--bg-raised);border-radius:0 0 var(--r-xl) var(--r-xl);flex:0 0 auto}
 .opt-card{flex:1;border:2px solid var(--border);border-radius:var(--r);padding:15px;text-align:center;cursor:pointer;transition:.15s;background:var(--bg-card)}
 .opt-card:hover{border-color:var(--blue-mid)}
 .opt-card.sel-blue{border-color:var(--blue);background:var(--blue-light)}
@@ -690,3 +695,35 @@ input[type=range]{accent-color:var(--blue)}
   .g2{grid-template-columns:1fr}
   .week-grid{grid-template-columns:140px repeat(5,1fr)}
 }
+
+/* ---- Vista dipendente · Le mie richieste (CODE-16) ---- */
+.form-hint{font-size:11px;color:var(--text-muted);margin:-6px 0 12px}
+.form-hint strong{color:var(--text)}
+.emp-req-tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+.emp-req-tabs .tab-btn{display:flex;align-items:center;gap:6px}
+.emp-req-count{
+  background:var(--bg-raised);color:var(--text-muted);border-radius:999px;
+  font-size:10px;font-weight:800;padding:1px 6px;line-height:1.5}
+.emp-req-tabs .tab-btn.active .emp-req-count{background:rgba(255,255,255,.22);color:#FFFFFF}
+.emp-req-dot{
+  width:7px;height:7px;border-radius:50%;background:var(--green);
+  box-shadow:0 0 0 3px var(--green-bg);display:inline-block}
+.emp-req-body{display:flex;flex-direction:column;gap:10px}
+.emp-req-card{
+  background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);
+  padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.emp-req-hd{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.emp-req-nome{font-size:14px;font-weight:700;color:var(--text)}
+.emp-req-meta{font-size:12px;color:var(--text-muted);margin-top:2px}
+.emp-req-date{font-size:12px;color:var(--text-muted)}
+.emp-req-nota{font-size:12px;color:var(--red-text);background:var(--red-bg);
+  border-radius:var(--r-sm);padding:8px 10px}
+.emp-code-box{
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  background:var(--green-bg);border:1px solid var(--green);border-radius:var(--r-sm);
+  padding:10px 12px}
+.emp-code-lbl{font-size:10px;font-weight:800;text-transform:uppercase;
+  letter-spacing:.08em;color:var(--green-text)}
+.emp-code-val{font-family:var(--font-mono);font-size:22px;font-weight:700;
+  letter-spacing:.16em;color:var(--green-text)}
+.emp-code-note{font-size:11px;color:var(--green-text);opacity:.85}

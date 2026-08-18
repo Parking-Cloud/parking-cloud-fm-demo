@@ -68,6 +68,73 @@ Generati da PRNG con seed fisso `20260817`: **stabili a ogni reload**.
 
 ## STORICO MODIFICHE
 
+## [18/08/2026] — CODE-16 · Pass a range di date, notifiche e "Le mie richieste"
+### Aggiunto
+- `employee/index.js`: sezione **"Le mie richieste"** con due tab —
+  *Pass Visitatori* (nome, range, stato, e per gli approvati il codice My2N in
+  evidenza) e *Segnalazioni* (tipo, stallo, data di invio, stato).
+  Stato vuoto: "Nessuna richiesta inviata".
+- `employee/index.js`: badge di notifica nell'hero, verde per un pass approvato
+  e rosso per uno rifiutato, con il nome del visitatore. Si azzera aprendo la
+  tab Pass.
+- `state.js`: selectors `richiestePassDipendente()`, `segnalazioniDipendente()`,
+  `notifichePassNonLette()`; actions `segnaRichiestePassLette()` e
+  `setEmpRichiesteTab()`; stato UI `empRichiesteTab`.
+- `styles.css`: `.emp-req-tabs`, `.emp-req-card`, `.emp-code-box`, `.form-hint`
+### Modificato
+- **Richiesta pass: da giorno+orari a intervallo di date.** In
+  `richiestePass` i campi `data` / `oraInizio` / `oraFine` sono sostituiti da
+  `dataInizio` / `dataFine`; il pass approvato vale **H24** su tutti i giorni
+  del range. Il codice My2N resta invariato.
+- `modals.js → emp-richiedi-pass`: rimossi "Ora inizio" e "Ora fine",
+  "Data" diventa **Data inizio / Data fine** affiancate, con `min` sulla
+  seconda e validazione `dataFine >= dataInizio` sia nel modale sia
+  nell'handler.
+- `modals.js → req-pass`: il FM vede "Dal / Al · H24" invece dell'orario.
+- `state.js → approvaRichiestaPass()`: scrive l'esito **sulla richiesta**
+  (`codiceMy2N`, `visitatoreId`, `esitoIlTs`, `letta: false`), non solo sul
+  visitatore. `rifiutaRichiestaPass()` fa lo stesso senza creare il pass.
+- `state.js → creaPassVisitatore()`: accetta `dataFineISO`, salva `dataFine` e
+  sceglie uno stallo di zona V libero su **tutti** i giorni del range.
+- `state.js → statoStallo()`: il pass multi-giorno occupa lo stallo per l'intero
+  intervallo (`v.data <= data && (v.dataFine || v.data) >= data`), non solo il
+  primo giorno.
+### Fix
+- **`rifiuta-req` perdeva la motivazione.** L'handler leggeva `Modals.form.note`
+  **senza chiamare prima `Modals._collect()`**: il testo scritto dal FM non
+  arrivava mai alla richiesta. Invisibile finché nessuno mostrava quel campo;
+  con la nuova vista dipendente il rifiuto sarebbe arrivato sempre senza motivo.
+- **Modali troppo alti: pulsante di conferma fuori schermo.** `.modal` aveva
+  `overflow-y:auto` sull'intero riquadro, quindi su finestre basse titolo e
+  pulsanti scorrevano via insieme al contenuto: il form sembrava "bloccato"
+  perché il pulsante di invio non era raggiungibile. Ora `.modal` è una colonna
+  flex con `overflow:hidden`, header e footer `flex:0 0 auto` e **solo
+  `.modal-body` scorrevole**. Vale per tutti i 28 modali.
+### Nota sulla diagnosi di "campi non cliccabili"
+Non esisteva alcun blocco sui campi: nessun `disabled`, nessun `readOnly`,
+`pointer-events` regolare, focus e scrittura funzionanti. Misurando la
+geometria, "Ora inizio", "Ora fine", "Note" **e il pulsante Invia** cadevano
+fuori dal viewport su una finestra bassa. La causa era l'altezza del modale, non
+i campi — ed è per questo che il fix è strutturale e non cosmetico.
+### Flussi verificati
+- TEST A (9/9): modale con 6 campi, orari assenti, date affiancate con default
+  oggi, tutti i campi con focus e scrittura, footer e titolo sempre nel
+  viewport, `dataFine < dataInizio` bloccata, invio → richiesta in FM
+- TEST B (8/8): `req-pass` mostra Dal/Al H24 · approvazione → My2N identico su
+  richiesta e visitatore · pass `00:00–23:59` su stallo V dedicato · badge verde
+  in hero · tab Pass con codice evidenziato · apertura tab → badge azzerato
+- TEST C (6/6): rifiuto con motivazione salvata, nessun pass creato, badge
+  rosso, card "Rifiutato" senza codice e con il motivo, tab Segnalazioni
+  popolata, stato vuoto corretto
+- Pass sovrapposti ricevono stalli V diversi; un pass a cavallo di oggi occupa
+  lo stallo anche oggi
+### Flussi NON verificabili in demo
+- L'invio reale del codice My2N al visitatore via email.
+- Su date **future** i pass visitatore non colorano la mappa FM: `statoStallo()`
+  valuta i visitatori solo per oggi (limite preesistente). Il doppio
+  assegnamento è comunque impedito da un controllo esplicito sulle
+  sovrapposizioni in `creaPassVisitatore()`.
+
 ## [18/08/2026] — CODE-15 · Finestra a giorni lavorativi, pass da dipendente, sospensione
 ### Aggiunto
 - `state.js`: `isLavorativo(d)` e `giorniLavorativi(da, n)` (esportati in `Utils`).
@@ -452,6 +519,25 @@ prima (3 voci)                          dopo (4 voci)
 
 ---
 
+## VERIFICA DI REGRESSIONE — 18/08/2026 (dopo CODE-16)
+
+Checklist completa sul bundle rigenerato: **49 ✅ · 0 ❌ · 0 ⚠️**, più i 23
+controlli dei TEST A/B/C. Zero errori in console.
+
+Tre ❌ intermedi, tutti risolti prima di chiudere il blocco:
+
+| ❌ | Natura | Esito |
+|----|--------|-------|
+| Motivazione del rifiuto assente nella card dipendente | **difetto reale** (`_collect()` mancante in `rifiuta-req`) | corretto |
+| "Modale più corto" falso | **difetto reale mio**: avevo tolto 2 campi ma aggiunto 2 alert, quindi l'altezza non era scesa | ridotto a un alert + hint inline, e pinnati header/footer |
+| Pulsante fuori viewport non misurabile | **ambiente**: il pannello di anteprima riportava `innerHeight = 0`, quindi `max-height:90vh` valeva `0px` | rimisurato a 1100×560: card 504px ≤ viewport, footer sempre visibile |
+
+> Nota di metodo aggiunta a N04: **le misure geometriche vanno prese solo dopo
+> aver verificato che `innerHeight > 0`**. Con viewport 0 ogni valore in `vh`
+> collassa e i test riportano numeri privi di senso.
+
+---
+
 ## VERIFICA DI REGRESSIONE — 18/08/2026 (dopo CODE-15)
 
 Checklist completa sul bundle rigenerato: **60 ✅ · 0 ❌ · 0 ⚠️**, piu' 26
@@ -576,5 +662,5 @@ Nessun bug funzionale aperto (N05 risolto in CODE-14, N06 in CODE-10). Elementi 
 | N01 | Debito lessicale | In `state.js` le zone A/B/C hanno `colore: 'gold'`, residuo della palette precedente. È mappato a `var(--blue)` e **non produce alcun oro a schermo**. Rinominarlo richiede di toccare `dashboard.js → coloreBarra()`, dove il valore fa cadere la mini-mappa sul colore a semaforo. |
 | N02 | Limite noto | La demo è in-memory: ogni reload riparte dal seed. Nessuna persistenza (voluto). |
 | N03 | Limite noto | `dist/parking_cloud_demo.html` dipende da Google Fonts per Nunito. Offline usa il fallback Trebuchet MS. |
-| N04 | Trappola nei test | (a) I nodi DOM raccolti prima di una mutazione diventano orfani: ri-cerca l'elemento a ogni iterazione. (b) Il server locale puo' servire JS **in cache** dopo una modifica: verifica con `fetch(url,{cache:'no-store'})` o rigenera il bundle. (c) `location.reload()` non ricarica lo snapshot `data:` del bundle: lo stato JS sopravvive fra i test. (d) Lo stato UI (tab attiva, sessione, filtri) **persiste fra un check e il successivo**: reimpostalo, o misuri la coda del test precedente. Non tutti i form usano `data-field` — Modifica sede usa id (`#sede-posti`) ed è dietro `toggle-edit-sede`. (e) Non tutto cio' che sembra una tabella lo e': la griglia FM Prenotazioni usa `.bk-row`, la mappa dipendente `.espot` (non `.mspot`), e le card giorno non prenotabili non hanno `data-giorno-iso` perche' non sono cliccabili. |
+| N04 | Trappola nei test | (a) I nodi DOM raccolti prima di una mutazione diventano orfani: ri-cerca l'elemento a ogni iterazione. (b) Il server locale puo' servire JS **in cache** dopo una modifica: verifica con `fetch(url,{cache:'no-store'})` o rigenera il bundle. (c) `location.reload()` non ricarica lo snapshot `data:` del bundle: lo stato JS sopravvive fra i test. (d) Lo stato UI (tab attiva, sessione, filtri) **persiste fra un check e il successivo**: reimpostalo, o misuri la coda del test precedente. Non tutti i form usano `data-field` — Modifica sede usa id (`#sede-posti`) ed è dietro `toggle-edit-sede`. (e) Prima di misurare geometrie o hit-testing verifica `innerHeight > 0`: nel pannello di anteprima puo' essere 0, e allora ogni `vh` collassa. (f) Non tutto cio' che sembra una tabella lo e': la griglia FM Prenotazioni usa `.bk-row`, la mappa dipendente `.espot` (non `.mspot`), e le card giorno non prenotabili non hanno `data-giorno-iso` perche' non sono cliccabili. |
 | ~~N05~~ | ✅ Risolto in CODE-14 | "Numero posti" in Modifica sede crea/rimuove stalli reali. Ora la riduzione passa da un modale di conferma con l'anteprima esatta di stalli e prenotazioni impattati, ed è reversibile con "Ripristina dati demo". |

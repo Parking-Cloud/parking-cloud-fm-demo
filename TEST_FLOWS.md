@@ -28,6 +28,8 @@ stato incoerente. È l'origine di CODE-03.
 | `dipendenti` | `kpiDipendenti`, `dipendentiFiltrati`, `trovaAccountPerEmail`, F10 |
 | `config.prenotazioni` | `finestraPrenotazione`, `ultimaDataPrenotabile`, `dataPrenotabile`, `settimanaHaGiorniPrenotabili`, `giorniAnticipo`, F11, F17 |
 | `puoRichiederePass` | topbar `employee/index.js`, colonna Pass vis. in `fm/dipendenti.js`, toggle in `dip-det`, F18 |
+| `richiestePass` (struttura) | `emp-richiedi-pass`, `req-pass`, `creaRichiestaPass`, `approvaRichiestaPass`, `rifiutaRichiestaPass`, sezione "Le mie richieste", F20 |
+| `visitatori.dataFine` | `statoStallo` (range), `creaPassVisitatore` (scelta stallo), F20 |
 | stato di un dipendente (`sospendiDipendente`) | `annullaPrenotazione`, `statoStallo`, `righeSettimanaFM`, `kpiDipendenti`, F19 |
 | `utentiPiattaforma` | `trovaAccountPerEmail`, `utenteCorrente`, `facilityManager`, F12 |
 | `PERMISSIONS` | sidebar e tab in `index.html`, `Sezioni.*`, F12 |
@@ -227,6 +229,47 @@ stato incoerente. È l'origine di CODE-03.
 - **Verifica:** toast con il conteggio esatto (o "nessuna prenotazione futura")
   · celle vuote da oggi in poi nella griglia FM · stalli `ms-free` in mappa ·
   zero accessi aperti residui
+
+## F20 — Richiesta pass dipendente → approvazione FM → notifica e codice (CODE-16)
+
+- **Sorgente:** `employee/index.js` (`emp-invia-richiesta-pass`, `sezioneRichieste`), `fm/config.js` (`approva-req` / `rifiuta-req`)
+- **Actions:** `creaRichiestaPass()`, `approvaRichiestaPass()` → `creaPassVisitatore()`, `rifiutaRichiestaPass()`, `segnaRichiestePassLette()`, `setEmpRichiesteTab()`
+- **Selectors:** `richiestePassDipendente()`, `segnalazioniDipendente()`, `notifichePassNonLette()`, `badges()`
+- **Sezioni FM impattate:** Dipendenti (banner + badge), Visitatori
+- **Modali:** `emp-richiedi-pass`, `req-pass`
+- **Da sapere:**
+  - La richiesta ha **`dataInizio` / `dataFine`, non orari**: il pass approvato
+    vale H24 su tutto il range. Chi cerca `r.oraInizio` non trova piu' nulla.
+  - L'esito va scritto **sulla richiesta**, non solo sul visitatore: il
+    dipendente vede la richiesta, non l'anagrafica visitatori. `codiceMy2N`
+    esiste quindi in due posti e deve coincidere.
+  - `letta: false` alla decisione del FM, `true` quando il dipendente apre la
+    tab Pass. E' l'unico stato che governa il badge nell'hero.
+  - `rifiuta-req` **deve** chiamare `Modals._collect()` prima di leggere
+    `Modals.form.note`, altrimenti la motivazione si perde in silenzio.
+  - Su un pass multi-giorno lo stallo V va scelto libero su **tutti** i giorni,
+    e la sovrapposizione fra pass va controllata a mano: `statoStallo()` valuta
+    i visitatori solo per oggi e sulle date future non vedrebbe l'altro pass.
+- **Verifica:** invio → banner FM e badge Dipendenti · approvazione → codice
+  identico su richiesta e visitatore, pass `00:00–23:59`, badge verde in hero,
+  codice visibile in "Le mie richieste" · rifiuto → nessun pass, badge rosso,
+  motivo visibile · apertura tab → badge azzerato
+
+## F21 — Altezza dei modali (CODE-16)
+
+- **Sorgente:** `styles.css` (`.modal`, `.modal-body`, `.modal-hd`, `.modal-footer`)
+- **Da sapere:**
+  - `.modal` e' una **colonna flex** con `overflow:hidden`; scorre solo
+    `.modal-body`. Header e footer sono `flex:0 0 auto` e restano sempre
+    visibili. Rimettere `overflow-y:auto` sull'intero `.modal` fa sparire il
+    pulsante di conferma sotto il bordo schermo su finestre basse.
+  - Vale per tutti i modali: aggiungere campi a un modale gia' lungo non lo
+    rende piu' irraggiungibile, lo rende solo piu' scorrevole.
+  - **Nei test:** verifica `innerHeight > 0` prima di misurare. Nel pannello di
+    anteprima puo' essere 0, e allora `max-height:90vh` vale `0px` e ogni
+    misura e' priva di senso.
+- **Verifica:** con viewport basso, header e footer dentro lo schermo, corpo
+  scrollabile, e un modale corto (es. `emp-profile`) che NON scrolla
 
 ## F12 — Login Admin → accesso Amministrazione
 

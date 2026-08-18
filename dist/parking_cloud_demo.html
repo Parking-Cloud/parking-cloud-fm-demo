@@ -550,17 +550,22 @@ input[type=range]{accent-color:var(--blue)}
 .modal-overlay.hidden{display:none}
 .modal{
   background:var(--bg-card);border-radius:var(--r-xl);width:520px;max-width:95vw;max-height:90vh;
-  overflow-y:auto;box-shadow:var(--shadow-lg);animation:slideUp .2s ease;
+  box-shadow:var(--shadow-lg);animation:slideUp .2s ease;
+  /* Colonna flex con SOLO il corpo scorrevole: cosi' titolo e pulsanti di
+     conferma restano sempre visibili. Con overflow sull'intero .modal, su
+     finestre basse il pulsante di conferma finiva sotto il bordo schermo e
+     sembrava che il form fosse "bloccato". */
+  display:flex;flex-direction:column;overflow:hidden;
 }
 .modal.modal-lg{width:680px}
 .modal.modal-xl{width:880px}
 @keyframes slideUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
-.modal-hd{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border);gap:10px}
+.modal-hd{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border);gap:10px;flex:0 0 auto}
 .modal-title{font-size:16px;font-weight:800;color:var(--text)}
 .modal-close{background:none;border:none;font-size:19px;cursor:pointer;color:var(--text-muted);padding:4px 7px;border-radius:var(--r-sm);transition:.15s;line-height:1}
 .modal-close:hover{background:var(--bg-raised);color:var(--text)}
-.modal-body{padding:18px 20px}
-.modal-footer{padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;background:var(--bg-raised);border-radius:0 0 var(--r-xl) var(--r-xl)}
+.modal-body{padding:18px 20px;overflow-y:auto;flex:1 1 auto;min-height:0}
+.modal-footer{padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;background:var(--bg-raised);border-radius:0 0 var(--r-xl) var(--r-xl);flex:0 0 auto}
 .opt-card{flex:1;border:2px solid var(--border);border-radius:var(--r);padding:15px;text-align:center;cursor:pointer;transition:.15s;background:var(--bg-card)}
 .opt-card:hover{border-color:var(--blue-mid)}
 .opt-card.sel-blue{border-color:var(--blue);background:var(--blue-light)}
@@ -698,6 +703,38 @@ input[type=range]{accent-color:var(--blue)}
   .g2{grid-template-columns:1fr}
   .week-grid{grid-template-columns:140px repeat(5,1fr)}
 }
+
+/* ---- Vista dipendente · Le mie richieste (CODE-16) ---- */
+.form-hint{font-size:11px;color:var(--text-muted);margin:-6px 0 12px}
+.form-hint strong{color:var(--text)}
+.emp-req-tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+.emp-req-tabs .tab-btn{display:flex;align-items:center;gap:6px}
+.emp-req-count{
+  background:var(--bg-raised);color:var(--text-muted);border-radius:999px;
+  font-size:10px;font-weight:800;padding:1px 6px;line-height:1.5}
+.emp-req-tabs .tab-btn.active .emp-req-count{background:rgba(255,255,255,.22);color:#FFFFFF}
+.emp-req-dot{
+  width:7px;height:7px;border-radius:50%;background:var(--green);
+  box-shadow:0 0 0 3px var(--green-bg);display:inline-block}
+.emp-req-body{display:flex;flex-direction:column;gap:10px}
+.emp-req-card{
+  background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);
+  padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.emp-req-hd{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.emp-req-nome{font-size:14px;font-weight:700;color:var(--text)}
+.emp-req-meta{font-size:12px;color:var(--text-muted);margin-top:2px}
+.emp-req-date{font-size:12px;color:var(--text-muted)}
+.emp-req-nota{font-size:12px;color:var(--red-text);background:var(--red-bg);
+  border-radius:var(--r-sm);padding:8px 10px}
+.emp-code-box{
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  background:var(--green-bg);border:1px solid var(--green);border-radius:var(--r-sm);
+  padding:10px 12px}
+.emp-code-lbl{font-size:10px;font-weight:800;text-transform:uppercase;
+  letter-spacing:.08em;color:var(--green-text)}
+.emp-code-val{font-family:var(--font-mono);font-size:22px;font-weight:700;
+  letter-spacing:.16em;color:var(--green-text)}
+.emp-code-note{font-size:11px;color:var(--green-text);opacity:.85}
 
 </style>
 </head>
@@ -1732,10 +1769,13 @@ function buildRichiestePass(dipendenti) {
     visitatoreNome: 'Andrea Bianchi',
     visitatoreEmail: 'a.bianchi@korepartners.it',
     azienda: 'Kore Partners',
-    data: toISO(addDays(OGGI, 2)),
-    oraInizio: '10:00', oraFine: '13:00',
+    dataInizio: toISO(addDays(OGGI, 2)),
+    dataFine:   toISO(addDays(OGGI, 2)),
     stato: 'in_attesa',
-    note: ''
+    note: '',
+    codiceMy2N: null,
+    esitoIlTs: null,
+    letta: true
   }];
 }
 
@@ -1802,6 +1842,7 @@ const AppState = {
     attivazione: null,           // { utenteId, tipo, invitatoDa } per view-activate
     fmWeekOffset: 0,
     empWeekOffset: 0,
+    empRichiesteTab: 'pass',   // 'pass' | 'segnalazioni'
     filtri: {
       accessi:    { q: '', tipo: '', stato: '', stallo: '', anomalia: false, aperto: false },
       dipendenti: { q: '' }
@@ -1905,7 +1946,11 @@ const S = {
         };
       }
       /* visitatore atteso su stallo di zona V */
-      const vis = AppState.visitatori.find(v => v.stalloId === stalloId && v.data === data && v.stato === 'atteso');
+      /* Il pass puo' coprire piu' giorni: `data` e' l'inizio, `dataFine` la
+         fine (assente sui pass di un solo giorno). Confrontare solo `v.data`
+         lascerebbe lo stallo libero dal secondo giorno in poi. */
+      const vis = AppState.visitatori.find(v => v.stalloId === stalloId && v.stato === 'atteso'
+        && v.data <= data && (v.dataFine || v.data) >= data);
       if (vis) return { stato: 'prenotato', cls: 'ms-occ', label: 'Riservato — visitatore atteso', occupanteNome: vis.nome, visitatoreId: vis.id, stalloId };
     }
 
@@ -2236,6 +2281,26 @@ const S = {
   dataPrenotabile(d) {
     const g = startOfDay(d);
     return isLavorativo(g) && g >= OGGI && g <= S.ultimaDataPrenotabile();
+  },
+
+  /** Richieste pass inoltrate da un dipendente, dalla piu' recente. */
+  richiestePassDipendente(dipendenteId) {
+    return AppState.richiestePass
+      .filter(r => r.dipendenteId === dipendenteId)
+      .slice()
+      .sort((a, b) => (b.esitoIlTs || 0) - (a.esitoIlTs || 0) || b.id.localeCompare(a.id));
+  },
+  /** Segnalazioni aperte da un dipendente, dalla piu' recente. */
+  segnalazioniDipendente(dipendenteId) {
+    return AppState.segnalazioni
+      .filter(s => s.segnalanteId === dipendenteId)
+      .slice()
+      .sort((a, b) => b.apertaIlTs - a.apertaIlTs);
+  },
+  /** Esiti non ancora letti dal dipendente: alimentano il badge nell'hero. */
+  notifichePassNonLette(dipendenteId) {
+    return AppState.richiestePass.filter(r =>
+      r.dipendenteId === dipendenteId && r.stato !== 'in_attesa' && !r.letta);
   },
 
   /* ---- segnalazioni ---- */
@@ -2689,14 +2754,29 @@ const A = {
   },
 
   /* ---- VISITATORI ---- */
-  creaPassVisitatore({ nome, azienda, email, dataISO, oraInizio, oraFine, referenteId, stalloId }) {
+  creaPassVisitatore({ nome, azienda, email, dataISO, dataFineISO, oraInizio, oraFine, referenteId, stalloId }) {
     const data = dataISO || OGGI_ISO;
-    const spot = stalloId || (AppState.stalli.find(s => s.zonaId === 'V' && S.statoStallo(s.id, data).stato === 'libero') || {}).id || null;
+    const fine = dataFineISO && dataFineISO > data ? dataFineISO : null;
+    /* Su un pass multi-giorno lo stallo deve essere libero TUTTI i giorni:
+       sceglierlo guardando solo il primo produrrebbe un doppio uso al secondo. */
+    const giorni = [data];
+    if (fine) { for (let d = addDays(fromISO(data), 1); toISO(d) <= fine; d = addDays(d, 1)) giorni.push(toISO(d)); }
+    /* Due controlli distinti, perche' coprono buchi diversi:
+       - statoStallo() vede accessi e prenotazioni, ma valuta i visitatori solo
+         per OGGI: sulle date future non saprebbe di un altro pass gia' emesso;
+       - la sovrapposizione fra pass va quindi verificata a mano sul range,
+         altrimenti due pass futuri riceverebbero entrambi lo stesso V-01. */
+    const occupatoDaAltroPass = (id) => AppState.visitatori.some(v =>
+      v.stalloId === id && v.stato !== 'revocato'
+      && v.data <= (fine || data) && (v.dataFine || v.data) >= data);
+    const spot = stalloId || (AppState.stalli.find(s => s.zonaId === 'V'
+      && giorni.every(g => S.statoStallo(s.id, g).stato === 'libero')
+      && !occupatoDaAltroPass(s.id)) || {}).id || null;
     const v = {
       id: nextId('VIS'),
       passId: 'VIS-' + String(AppState.visitatori.length + 41).padStart(4, '0'),
       nome, azienda: azienda || '—', email,
-      stalloId: spot, data, oraInizio: oraInizio || '09:00', oraFine: oraFine || '18:00',
+      stalloId: spot, data, dataFine: fine, oraInizio: oraInizio || '09:00', oraFine: oraFine || '18:00',
       stato: 'atteso', zonaErrata: false, scaduto: false,
       codiceMy2N: String(Math.floor(1000 + Math.random() * 9000)),
       referenteId: referenteId || 'USR-0002',
@@ -2734,37 +2814,74 @@ const A = {
 
   /** Richiesta di pass inoltrata dal dipendente al FM. Nasce sempre
       'in_attesa': e' il FM a deciderne l'esito da Dipendenti -> req-pass. */
-  creaRichiestaPass({ dipendenteId, visitatoreNome, visitatoreEmail, azienda, data, oraInizio, oraFine, note }) {
+  creaRichiestaPass({ dipendenteId, visitatoreNome, visitatoreEmail, azienda, dataInizio, dataFine, note }) {
+    const dal = dataInizio || OGGI_ISO;
+    const al  = dataFine || dal;
     const r = {
       id: nextId('REQ'),
       dipendenteId,
       visitatoreNome: (visitatoreNome || '').trim(),
       visitatoreEmail: (visitatoreEmail || '').trim(),
       azienda: (azienda || '').trim() || '—',
-      data: data || OGGI_ISO,
-      oraInizio: oraInizio || '09:00',
-      oraFine: oraFine || '18:00',
+      /* il pass approvato vale H24 su tutti i giorni del range: non si
+         memorizzano orari, solo l'intervallo di date */
+      dataInizio: dal,
+      dataFine: al < dal ? dal : al,
       stato: 'in_attesa',
-      note: (note || '').trim()
+      note: (note || '').trim(),
+      codiceMy2N: null,
+      esitoIlTs: null,
+      letta: true
     };
     AppState.richiestePass.push(r);
     Store.emit('richieste');
     return r;
   },
 
+  /** Approva: crea il pass H24 sul range e riporta l'esito SULLA RICHIESTA.
+      Il codice My2N va scritto anche qui, non solo sul visitatore: il
+      dipendente vede la richiesta, non l'anagrafica visitatori. */
   approvaRichiestaPass(richiestaId, note) {
     const r = AppState.richiestePass.find(x => x.id === richiestaId);
     if (!r) return null;
-    r.stato = 'approvata'; r.note = note || '';
-    const v = A.creaPassVisitatore({ nome: r.visitatoreNome, azienda: r.azienda, email: r.visitatoreEmail, dataISO: r.data, oraInizio: r.oraInizio, oraFine: r.oraFine, referenteId: r.dipendenteId });
+    const v = A.creaPassVisitatore({
+      nome: r.visitatoreNome, azienda: r.azienda, email: r.visitatoreEmail,
+      dataISO: r.dataInizio, dataFineISO: r.dataFine,
+      oraInizio: '00:00', oraFine: '23:59',
+      referenteId: r.dipendenteId
+    });
+    Object.assign(r, {
+      stato: 'approvata', note: note || '',
+      codiceMy2N: v.codiceMy2N, visitatoreId: v.id,
+      esitoIlTs: Date.now(), letta: false
+    });
     Store.emit('visitatori');
     return v;
   },
   rifiutaRichiestaPass(richiestaId, note) {
     const r = AppState.richiestePass.find(x => x.id === richiestaId);
-    if (r) { r.stato = 'rifiutata'; r.note = note || ''; }
+    if (r) Object.assign(r, { stato: 'rifiutata', note: note || '', esitoIlTs: Date.now(), letta: false });
     Store.emit('visitatori');
     return r;
+  },
+
+  /** Il dipendente ha aperto la tab Pass: gli esiti non sono piu' "novita'". */
+  segnaRichiestePassLette(dipendenteId) {
+    let n = 0;
+    AppState.richiestePass.forEach(r => {
+      if (r.dipendenteId === dipendenteId && r.stato !== 'in_attesa' && !r.letta) { r.letta = true; n++; }
+    });
+    if (n) Store.emit('richieste');
+    return n;
+  },
+
+  setEmpRichiesteTab(tab) {
+    AppState.ui.empRichiesteTab = tab;
+    if (tab === 'pass') {
+      const d = S.dipendenteCorrente();
+      if (d) A.segnaRichiestePassLette(d.id);
+    }
+    Store.emit('emp-tab');
   },
 
   /* ---- SEGNALAZIONI ---- */
@@ -3551,8 +3668,8 @@ Modals.register('req-pass', {
         UI.infoBox('Visitatore', UI.esc(r.visitatoreNome)),
         UI.infoBox('Email', `<span style="font-size:12px">${UI.esc(r.visitatoreEmail)}</span>`),
         UI.infoBox('Azienda', UI.esc(r.azienda)),
-        UI.infoBox('Data', UI.esc(U.fmtMedium(U.fromISO(r.data)))),
-        UI.infoBox('Orario richiesto', `${UI.esc(r.oraInizio)} – ${UI.esc(r.oraFine)}`, true),
+        UI.infoBox('Dal', UI.esc(U.fmtMedium(U.fromISO(r.dataInizio)))),
+        UI.infoBox('Al', UI.esc(U.fmtMedium(U.fromISO(r.dataFine))) + ' <span class="muted" style="font-size:11px">· H24</span>'),
         UI.infoBox('Stato', UI.badge(r.stato === 'in_attesa' ? 'In attesa' : r.stato, r.stato === 'in_attesa' ? 'amber' : 'green'))
       ])
       + UI.campo('Note FM', UI.input({ placeholder: 'Note opzionali…' }).replace('<input', '<input' + fld('note')));
@@ -3943,21 +4060,29 @@ Modals.register('emp-segnala', {
     nemmeno reso agli altri. */
 Modals.register('emp-richiedi-pass', {
   size: 'modal-lg',
-  initForm: () => ({ data: U.OGGI_ISO, oraInizio: '09:00', oraFine: '18:00' }),
+  initForm: () => ({ dataInizio: U.OGGI_ISO, dataFine: U.OGGI_ISO }),
   titolo: () => '🪪 Richiedi Pass Visitatore',
   body: () => {
     const d = S.dipendenteCorrente();
     if (!d) return UI.alert('Sessione non valida.', 'warn');
-    return UI.alert('La richiesta viene inoltrata al Facility Manager, che la approva o la rifiuta. Il pass non è attivo finché non viene approvato.', 'info')
+    const dal = f('dataInizio', U.OGGI_ISO);
+    const al  = f('dataFine', U.OGGI_ISO);
+    const invertito = al < dal;
+    const giorni = invertito ? 0
+      : Math.round((U.fromISO(al) - U.fromISO(dal)) / 86400000) + 1;
+    return UI.alert('Il Facility Manager approva o rifiuta la richiesta. Il pass non è attivo finché non viene approvato.', 'info')
       + `<div class="form-grid2">
-        ${UI.campo('Nome visitatore *', UI.input({ placeholder: 'Nome e cognome' }).replace('<input', '<input' + fld('visitatoreNome')))}
-        ${UI.campo('Email visitatore *', UI.input({ tipo: 'email', placeholder: 'nome@azienda.com' }).replace('<input', '<input' + fld('visitatoreEmail')))}
-        ${UI.campo('Azienda', UI.input({ placeholder: 'Azienda di provenienza' }).replace('<input', '<input' + fld('azienda')))}
-        ${UI.campo('Data', UI.input({ tipo: 'date', valore: f('data') }).replace('<input', '<input' + fld('data')))}
-        ${UI.campo('Ora inizio', UI.input({ tipo: 'time', valore: f('oraInizio') }).replace('<input', '<input' + fld('oraInizio')))}
-        ${UI.campo('Ora fine', UI.input({ tipo: 'time', valore: f('oraFine') }).replace('<input', '<input' + fld('oraFine')))}
+        ${UI.campo('Nome visitatore *', UI.input({ valore: f('visitatoreNome', ''), placeholder: 'Nome e cognome', focusKey: 'req-nome' }).replace('<input', '<input' + fld('visitatoreNome')))}
+        ${UI.campo('Email visitatore *', UI.input({ tipo: 'email', valore: f('visitatoreEmail', ''), placeholder: 'nome@azienda.com', focusKey: 'req-email' }).replace('<input', '<input' + fld('visitatoreEmail')))}
+        ${UI.campo('Azienda', UI.input({ valore: f('azienda', ''), placeholder: 'Azienda di provenienza', focusKey: 'req-azienda' }).replace('<input', '<input' + fld('azienda')))}
+        <div></div>
+        ${UI.campo('Data inizio *', UI.input({ tipo: 'date', valore: dal, azione: 'refresh-modale', focusKey: 'req-dal' }).replace('<input', '<input' + fld('dataInizio')))}
+        ${UI.campo('Data fine *', UI.input({ tipo: 'date', valore: al, min: dal, azione: 'refresh-modale', focusKey: 'req-al' }).replace('<input', '<input' + fld('dataFine')))}
       </div>`
-      + UI.campo('Note per il FM', `<textarea class="form-textarea"${fld('note')} placeholder="Motivo della visita, indicazioni particolari…"></textarea>`);
+      + (invertito
+          ? UI.alert('La <strong>data fine</strong> non può precedere la data inizio.', 'danger')
+          : `<div class="form-hint">Pass valido <strong>H24</strong> per ${giorni} giorn${giorni === 1 ? 'o' : 'i'}, dal ${UI.esc(U.fmtDM(U.fromISO(dal)))} al ${UI.esc(U.fmtDM(U.fromISO(al)))}.</div>`)
+      + UI.campo('Note per il FM', `<textarea class="form-textarea"${fld('note')} placeholder="Motivo della visita, indicazioni particolari…">${UI.esc(f('note', ''))}</textarea>`);
   },
   footer: () => chiudi() + ok('Invia richiesta', 'emp-invia-richiesta-pass')
 });
@@ -5537,6 +5662,9 @@ UI.on('approva-req', d => {
   UI.toast(`✓ Approvato · codice My2N ${v.codiceMy2N} inviato a ${v.email}`);
 });
 UI.on('rifiuta-req', d => {
+  /* _collect() PRIMA di leggere il form: senza, la motivazione scritta dal FM
+     non arriva mai alla richiesta e il dipendente vede un rifiuto senza motivo. */
+  Modals._collect();
   const r = A.rifiutaRichiestaPass(d.richiestaId, Modals.form.note);
   Modals.close();
   UI.toast(`Richiesta rifiutata · ${S.nomePersona(r.dipendenteId)} notificato`);
@@ -6057,6 +6185,9 @@ global.PC.Sezioni.dipendenteView = {
             ${segnalazioniMie.length
               ? UI.badge(segnalazioniMie.length + ' segnalazione' + (segnalazioniMie.length > 1 ? 'i' : '') + ' in corso', 'amber')
               : UI.badge('Nessuna segnalazione attiva', 'green', true)}
+            ${S.notifichePassNonLette(dip.id).map(r => UI.badge(
+                (r.stato === 'approvata' ? '✓ Pass approvato · ' : '✗ Pass rifiutato · ') + r.visitatoreNome,
+                r.stato === 'approvata' ? 'green' : 'red')).join('')}
             <div class="booking-window-chip">📅 Prenota fino a <strong>${anticipo} giorn${anticipo === 1 ? 'o' : 'i'} lavorativ${anticipo === 1 ? 'o' : 'i'}</strong> in anticipo</div>
           </div>
         </div>
@@ -6154,9 +6285,83 @@ global.PC.Sezioni.dipendenteView = {
         }).join('') : UI.vuoto('Nessuna prenotazione futura. Clicca su un giorno del calendario per prenotare.')}
       </div>`;
 
-    UI.mount('#emp-content', hero + nav + griglia + mappa + lista);
+    UI.mount('#emp-content', hero + nav + griglia + mappa + lista + sezioneRichieste(dip));
   }
 };
+
+/** "Le mie richieste": due tab, pass visitatore e segnalazioni inviate.
+    Aprire la tab Pass segna come letti gli esiti — il badge nell'hero sparisce. */
+function sezioneRichieste(dip) {
+  const tab = State.ui.empRichiesteTab || 'pass';
+  const richieste = S.richiestePassDipendente(dip.id);
+  const segnalazioni = S.segnalazioniDipendente(dip.id);
+  const nonLette = S.notifichePassNonLette(dip.id).length;
+
+  const tabs = `<div class="emp-req-tabs">
+    <div class="tab-btn${tab === 'pass' ? ' active' : ''}"${UI.act('emp-richieste-tab', { tab: 'pass' })}>🪪 Pass Visitatori${richieste.length ? ` <span class="emp-req-count">${richieste.length}</span>` : ''}${nonLette ? '<span class="emp-req-dot"></span>' : ''}</div>
+    <div class="tab-btn${tab === 'segnalazioni' ? ' active' : ''}"${UI.act('emp-richieste-tab', { tab: 'segnalazioni' })}>🚨 Segnalazioni${segnalazioni.length ? ` <span class="emp-req-count">${segnalazioni.length}</span>` : ''}</div>
+  </div>`;
+
+  const STATO_PASS = {
+    in_attesa:  ['In attesa', 'amber'],
+    approvata:  ['Approvato', 'green'],
+    rifiutata:  ['Rifiutato', 'red']
+  };
+  const STATO_SEG = {
+    aperta:      ['Aperta', 'red'],
+    in_gestione: ['In gestione', 'amber'],
+    risolta:     ['Risolta', 'green']
+  };
+
+  const corpo = tab === 'pass'
+    ? (richieste.length
+        ? richieste.map(r => {
+            const [lbl, col] = STATO_PASS[r.stato] || ['—', 'gray'];
+            const unGiorno = r.dataInizio === r.dataFine;
+            return `<div class="emp-req-card">
+              <div class="emp-req-hd">
+                <div>
+                  <div class="emp-req-nome">${UI.esc(r.visitatoreNome)}</div>
+                  <div class="emp-req-meta">${UI.esc(r.azienda)} · ${UI.esc(r.visitatoreEmail)}</div>
+                </div>
+                ${UI.badge(lbl, col)}
+              </div>
+              <div class="emp-req-date">📅 ${UI.esc(U.fmtMedium(U.fromISO(r.dataInizio)))}${unGiorno ? '' : ' → ' + UI.esc(U.fmtMedium(U.fromISO(r.dataFine)))}</div>
+              ${r.stato === 'approvata' && r.codiceMy2N
+                ? `<div class="emp-code-box">
+                     <span class="emp-code-lbl">Codice accesso</span>
+                     <span class="emp-code-val">${UI.esc(r.codiceMy2N)}</span>
+                     <span class="emp-code-note">valido H24 dal ${UI.esc(U.fmtDM(U.fromISO(r.dataInizio)))} al ${UI.esc(U.fmtDM(U.fromISO(r.dataFine)))}</span>
+                   </div>`
+                : ''}
+              ${r.stato === 'rifiutata' && r.note
+                ? `<div class="emp-req-nota">Motivo: ${UI.esc(r.note)}</div>` : ''}
+            </div>`;
+          }).join('')
+        : UI.vuoto('Nessuna richiesta inviata'))
+    : (segnalazioni.length
+        ? segnalazioni.map(s => {
+            const [lbl, col] = STATO_SEG[s.stato] || ['—', 'gray'];
+            const t = D.TIPO_SEGNALAZIONE[s.tipo] || D.TIPO_SEGNALAZIONE.altro;
+            return `<div class="emp-req-card">
+              <div class="emp-req-hd">
+                <div>
+                  <div class="emp-req-nome">${t.icona} ${UI.esc(t.label)}</div>
+                  <div class="emp-req-meta">${s.stalloId ? 'Stallo <strong>' + UI.esc(s.stalloId) + '</strong>' : 'Nessuno stallo indicato'}</div>
+                </div>
+                ${UI.badge(lbl, col)}
+              </div>
+              <div class="emp-req-date">📅 Inviata il ${UI.esc(U.fmtMedium(new Date(s.apertaIlTs)))} · ${UI.esc(U.hhmm(new Date(s.apertaIlTs)))}</div>
+            </div>`;
+          }).join('')
+        : UI.vuoto('Nessuna richiesta inviata'));
+
+  return `<div style="margin-top:24px">
+    <div class="emp-section-title" style="margin-bottom:14px">Le mie richieste</div>
+    ${tabs}
+    <div class="emp-req-body">${corpo}</div>
+  </div>`;
+}
 
 /** Schermata neutra quando la sessione non appartiene a un dipendente. */
 function vistaNonDisponibile() {
@@ -6206,6 +6411,8 @@ function cardGiorno(g, dip) {
 /* ---- handler ---------------------------------------------------------- */
 UI.on('week-emp', d => A.empWeek(parseInt(d.delta, 10)));
 
+UI.on('emp-richieste-tab', d => A.setEmpRichiesteTab(d.tab));
+
 UI.on('emp-invia-richiesta-pass', () => {
   Modals._collect();
   const dip = S.dipendenteCorrente();
@@ -6216,14 +6423,17 @@ UI.on('emp-invia-richiesta-pass', () => {
   const fm = Modals.form;
   if (!(fm.visitatoreNome || '').trim())  { UI.toast('Il nome del visitatore è obbligatorio'); return; }
   if (!(fm.visitatoreEmail || '').trim()) { UI.toast('L\'email del visitatore è obbligatoria'); return; }
-  A.creaRichiestaPass({
+  if (!fm.dataInizio || !fm.dataFine)     { UI.toast('Indica data inizio e data fine'); return; }
+  if (fm.dataFine < fm.dataInizio)        { UI.toast('La data fine non può precedere la data inizio'); return; }
+  const r = A.creaRichiestaPass({
     dipendenteId: dip.id,
     visitatoreNome: fm.visitatoreNome, visitatoreEmail: fm.visitatoreEmail,
-    azienda: fm.azienda, data: fm.data,
-    oraInizio: fm.oraInizio, oraFine: fm.oraFine, note: fm.note
+    azienda: fm.azienda,
+    dataInizio: fm.dataInizio, dataFine: fm.dataFine, note: fm.note
   });
   Modals.close();
-  UI.toast('📨 Richiesta inviata al Facility Manager');
+  const gg = Math.round((U.fromISO(r.dataFine) - U.fromISO(r.dataInizio)) / 86400000) + 1;
+  UI.toast(`📨 Richiesta inviata al Facility Manager · ${gg} giorn${gg === 1 ? 'o' : 'i'} H24`);
 });
 
 UI.on('emp-apri-giorno', d => {
