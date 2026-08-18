@@ -313,8 +313,18 @@ stato incoerente. È l'origine di CODE-03.
 - **Sorgente:** `fm/amministrazione.js` → `set-scenario`
 - **Actions:** `attivaDemoOspedale()`, `ripristinaDemoUffici()`, `_caricaScenario()`
 - **Da sapere:**
+  - I due scenari **coesistono in memoria** (`SCENARI.uffici` /
+    `SCENARI.ospedale`): il toggle non rigenera, congela lo stato vivo nel
+    proprio slot e carica l'altro. Il lavoro fatto in uno scenario si ritrova
+    tornandoci.
   - Sostituisce **tutto** il dataset in place (stessa regola di
     `ripristinaDemo()`): `AppState` non va rimpiazzato.
+  - `buildSeedOspedale()` **non deve** chiamare `resetGeneratori()`: con i due
+    dataset compresenti azzerare i contatori genera id duplicati fra scenari.
+  - `utentiPiattaforma` e' **condiviso per riferimento**: duplicarlo fa cadere
+    la sessione allo switch, perche' `S.utenteCorrente()` non trova piu' l'id.
+  - `buildAccessiOspedale()` gira al **load del modulo**: non puo' usare `S.*`,
+    che a quel punto non e' ancora inizializzato.
   - Lo scenario ospedale porta con se' `modalitaPrenotazione: 'turni'`: e' il
     modo piu' rapido di mostrare i turni senza configurare nulla a mano.
   - `buildAccessi()` **non** e' riusabile: genera tutti gli ingressi in fascia

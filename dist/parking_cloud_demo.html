@@ -2003,8 +2003,15 @@ function buildPrenotazioniOspedale(dipendenti, stalli, turni) {
 function buildAccessiOspedale(prenotazioni, dipendenti, turni) {
   const out = [];
   const byId = new Map(dipendenti.map(d => [d.id, d]));
-  const adesso = S.turnoCorrente() || turni[0];
+  /* Helper LOCALI e non S.*: questa funzione gira al load del modulo, quando
+     Selectors non e' ancora inizializzato. Dipendere da S qui significa
+     ReferenceError all'avvio. */
+  const min = (hhmm) => { const [h, m] = String(hhmm || '0:0').split(':').map(Number); return (h || 0) * 60 + (m || 0); };
   const oraOra = new Date().getHours() * 60 + new Date().getMinutes();
+  const adesso = turni.find(x => {
+    const dal = min(x.inizio), al = min(x.fine);
+    return dal <= al ? (oraOra >= dal && oraOra < al) : (oraOra >= dal || oraOra < al);
+  }) || turni[0];
 
   prenotazioni
     .filter(p => p.data === OGGI_ISO && p.tipo === 'ufficio' && p.stalloId)
@@ -2012,8 +2019,8 @@ function buildAccessiOspedale(prenotazioni, dipendenti, turni) {
       const dip = byId.get(p.dipendenteId);
       const t = turni.find(x => x.id === p.turnoId);
       if (!dip || !t) return;
-      const inizio = S.minutiDa(t.inizio);
-      const fine   = S.minutiDa(t.fine);
+      const inizio = min(t.inizio);
+      const fine   = min(t.fine);
       const corrente = t.id === adesso.id;
       /* turno non ancora iniziato: nessuno e' entrato */
       const iniziato = corrente || (inizio <= fine ? oraOra >= fine : false);
@@ -2037,8 +2044,12 @@ function buildAccessiOspedale(prenotazioni, dipendenti, turni) {
   return out;
 }
 
-function costruisciDatiOspedale() {
-  resetGeneratori();
+/** Dataset dello scenario ospedale.
+    NON chiama resetGeneratori(): i due scenari vivono in memoria insieme e i
+    loro id devono restare distinti. Azzerare i contatori qui farebbe nascere
+    un DIP-0001 ospedaliero identico a quello degli uffici, e la prima
+    anagrafica creata dopo uno switch colliderebbe con una esistente. */
+function buildSeedOspedale(utenti) {
   const zone         = ZONE_SEED.map(z => Object.assign({}, z));
   const stalli       = buildStalli(zone);
   const dipendenti   = buildDipendentiOspedale(stalli);
@@ -2058,7 +2069,10 @@ function costruisciDatiOspedale() {
     hardware: buildHardware(),
     richiestePass: [],
     config,
-    utentiPiattaforma: buildUtentiPiattaforma(),
+    /* Admin e FM sono account di PIATTAFORMA, non del singolo parcheggio:
+       condivisi per riferimento fra gli scenari. Duplicarli farebbe fallire
+       S.utenteCorrente() dopo uno switch, e la sessione cadrebbe. */
+    utentiPiattaforma: utenti,
     dipendenteDemoId: dipendenti.find(d => d.utenteDemo).id
   };
 }
@@ -2072,8 +2086,8 @@ function costruisciDatiOspedale() {
     DIP/PRE/VIS/ACC/SEG/HW/REQ/USR in sequenza, quindi cambiarlo cambierebbe
     gli id. Va tenuto identico a quello originale, altrimenti il ripristino
     non produce lo stesso stato di partenza. */
-function costruisciDati() {
-  resetGeneratori();
+/** Dataset dello scenario uffici: il seed storico della demo. */
+function buildSeedUfficio(utenti) {
   const zone         = ZONE_SEED.map(z => Object.assign({}, z));
   const stalli       = buildStalli(zone);
   const dipendenti   = buildDipendenti(stalli);
@@ -2087,12 +2101,23 @@ function costruisciDati() {
     hardware: buildHardware(),
     richiestePass: buildRichiestePass(dipendenti),
     config: buildConfig(),
-    utentiPiattaforma: buildUtentiPiattaforma(),
+    utentiPiattaforma: utenti,
     dipendenteDemoId: dipendenti.find(d => d.utenteDemo).id
   };
 }
 
-const DATI = costruisciDati();
+/** I DUE scenari, costruiti una volta sola e tenuti entrambi in memoria.
+    Il toggle non rigenera: scambia l'oggetto attivo. E' cio' che permette di
+    passare a uffici, tornare in ospedale e ritrovare il lavoro fatto.
+    L'ordine di costruzione e' fisso, quindi i dati restano deterministici. */
+function costruisciScenari() {
+  resetGeneratori();
+  const utenti = buildUtentiPiattaforma();
+  return { uffici: buildSeedUfficio(utenti), ospedale: buildSeedOspedale(utenti) };
+}
+
+let SCENARI = costruisciScenari();
+const DATI = SCENARI.uffici;
 
 const AppState = {
   /* --- dati --- */
@@ -3478,8 +3503,11 @@ const A = {
       lascerebbe le sezioni agganciate a dati morti.
       La sessione (ruolo, utente, vista) resta, a meno che l'utente loggato
       sia stato creato durante la demo: in quel caso non esiste piu' e si esce. */
+  /** Ripristino totale: ricostruisce ENTRAMBI gli scenari e riporta il vivo
+      su 'uffici'. Solo qui i generatori vengono riavvolti. */
   ripristinaDemo() {
-    const d = costruisciDati();
+    SCENARI = costruisciScenari();
+    const d = SCENARI.uffici;
     AppState.zone              = d.zone;
     AppState.stalli            = d.stalli;
     AppState.dipendenti        = d.dipendenti;
@@ -3555,8 +3583,31 @@ const A = {
     return { ok: true, sessioneChiusa: false };
   },
 
-  attivaDemoOspedale()  { return A._caricaScenario(costruisciDatiOspedale(), 'ospedale'); },
-  ripristinaDemoUffici() { return A._caricaScenario(costruisciDati(), 'uffici'); },
+  /** Congela lo stato vivo nello slot dello scenario corrente, cosi' tornando
+      indietro si ritrova esattamente quello che si era lasciato. */
+  _salvaScenarioCorrente() {
+    const nome = AppState.ui.demoScenario || 'uffici';
+    if (!SCENARI[nome]) return;
+    Object.assign(SCENARI[nome], {
+      zone: AppState.zone, stalli: AppState.stalli, dipendenti: AppState.dipendenti,
+      prenotazioni: AppState.prenotazioni, visitatori: AppState.visitatori,
+      segnalazioni: AppState.segnalazioni, accessi: AppState.accessi,
+      hardware: AppState.hardware, richiestePass: AppState.richiestePass,
+      config: AppState.config, utentiPiattaforma: AppState.utentiPiattaforma,
+      dipendenteDemoId: AppState.utenti.dipendenteDemoId
+    });
+  },
+
+  /** Passa a uno scenario SENZA rigenerarlo: i due dataset coesistono. */
+  cambiaScenario(nome) {
+    if (nome !== 'uffici' && nome !== 'ospedale') return { ok: false };
+    if (AppState.ui.demoScenario === nome) return { ok: true, sessioneChiusa: false };
+    A._salvaScenarioCorrente();
+    return A._caricaScenario(SCENARI[nome], nome);
+  },
+
+  attivaDemoOspedale()   { return A.cambiaScenario('ospedale'); },
+  ripristinaDemoUffici() { return A.cambiaScenario('uffici'); },
 
   setAnalyticsPeriodo(tipo) { AppState.ui.analyticsPeriodo = tipo; Store.emit('nav'); },
   setPeriodo(tipo) {

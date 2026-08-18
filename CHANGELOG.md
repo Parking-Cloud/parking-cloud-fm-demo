@@ -68,6 +68,46 @@ Generati da PRNG con seed fisso `20260817`: **stabili a ogni reload**.
 
 ## STORICO MODIFICHE
 
+## [18/08/2026] — CODE-17B rev. · Due scenari coesistenti in memoria
+> Revisione di CODE-17B dopo le risposte alle 5 domande. Punti 1, 2, 4 e 5 erano
+> già conformi; il punto 3 no.
+
+### Modificato
+- **Il toggle Uffici/Ospedale non rigenera più: scambia.** Prima
+  `attivaDemoOspedale()` ricostruiva il dataset a ogni click e
+  `ripristinaDemoUffici()` idem. Funzionava per una demo lineare, ma **il
+  lavoro fatto in uno scenario andava perso passando all'altro e tornando**.
+- `costruisciDati()` → `buildSeedUfficio(utenti)`, `costruisciDatiOspedale()` →
+  `buildSeedOspedale(utenti)`. Nuova `costruisciScenari()` che li costruisce
+  **entrambi una volta sola**, in ordine fisso, e li tiene in `SCENARI`.
+- Nuove actions `cambiaScenario(nome)` e `_salvaScenarioCorrente()`: prima di
+  passare all'altro scenario lo stato vivo viene congelato nel proprio slot.
+- `ripristinaDemo()` ricostruisce **entrambi** gli scenari: è l'unico punto in
+  cui i generatori vengono riavvolti.
+### Fix
+- **`buildSeedOspedale()` non chiama più `resetGeneratori()`.** Con i due
+  dataset compresenti, azzerare i contatori faceva nascere un `DIP-0001`
+  ospedaliero identico a quello degli uffici: la prima anagrafica creata dopo
+  uno switch sarebbe collisa con una esistente — la stessa classe di bug della
+  collisione `USR-0001` documentata in F12.
+- **`utentiPiattaforma` è condiviso per riferimento** fra gli scenari. Admin e
+  FM sono account di piattaforma, non del singolo parcheggio: duplicandoli,
+  `S.utenteCorrente()` falliva dopo lo switch e **la sessione cadeva**.
+- **`buildAccessiOspedale()` non dipende più da `Selectors`.** Spostando la
+  costruzione al load del modulo è emerso un `ReferenceError: Cannot access 'S'
+  before initialization`: la funzione girava prima che `Selectors` esistesse.
+  Ora usa helper locali. Il difetto era invisibile finché il dataset ospedale
+  nasceva solo al click.
+### Flussi verificati
+- **TEST A 33/33 ✅** — checklist completa in giornaliera, nessun downgrade
+- **TEST B 8/8 · TEST C 6/6 · TEST D 5/5 · TEST E 5/5**
+- **Persistenza 5/5**: prenotazione creata in ospedale → passo a uffici (non
+  c'è) → aggiungo uno stallo agli uffici (156→157) → torno in ospedale: **la
+  prenotazione è ancora lì e gli stalli sono 156**, non contaminati → torno
+  agli uffici: **i 157 stalli ci sono ancora**
+- Id `DIP` distinti fra i due scenari, sessione Admin conservata allo switch,
+  determinismo su ricostruzioni ripetute
+
 ## [18/08/2026] — CODE-17B · UI modalità a turni + scenario ospedale
 > `giornaliera` resta il default e il comportamento invariato: la modalità a
 > turni è **addizione pura**, visibile solo quando è attiva.
