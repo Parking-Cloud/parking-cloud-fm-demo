@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Parking Cloud · Demo Facility Manager</title>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- ══════════════════════════ LOGIN ══════════════════════════ -->
+<div id="view-login" class="view active">
+  <div class="login-wrap">
+    <div class="login-logo">
+      <div class="pc-logo pc-logo-lg">
+        <div class="pc-logo-icon">🅿</div>
+        <div class="pc-logo-text"><span class="pc-parking">parking</span><span class="pc-cloud">CLOUD</span></div>
+      </div>
+      <div class="login-tagline" id="login-sede">Sede Demo · Centro Direzionale A</div>
+    </div>
+    <div class="login-card">
+      <div class="login-title">Accesso al Sistema</div>
+      <div class="login-sub">Inserisci le tue credenziali aziendali</div>
+      <div class="form-group">
+        <div class="form-label">Email</div>
+        <input class="form-input" type="email" id="login-email" placeholder="nome@azienda.com" autocomplete="username">
+      </div>
+      <div class="form-group" style="margin-bottom:22px">
+        <div class="form-label">Password</div>
+        <input class="form-input" type="password" id="login-pwd" value="••••••••" autocomplete="current-password">
+      </div>
+      <button class="btn login-btn btn-full" data-act="login" style="font-size:14px;padding:12px">Accedi →</button>
+      <div class="login-note">Il ruolo viene determinato automaticamente dall'account.<br>
+        L'accesso è su invito: non esiste registrazione pubblica.</div>
+    </div>
+
+    <!-- scorciatoia di presentazione: compila il campo email, non seleziona il ruolo -->
+    <div class="demo-accounts">
+      <div class="demo-accounts-lbl">Account demo</div>
+      <div class="demo-accounts-row">
+        <span data-act="usa-demo" data-email="admin@parkingcloud.eu">Admin</span>
+        <span data-act="usa-demo" data-email="manager@demo.parkingcloud.eu">Facility Manager</span>
+        <span data-act="usa-demo" data-email="dipendente@demo.parkingcloud.eu">Dipendente</span>
+      </div>
+    </div>
+
+    <div class="login-footer">
+      Problemi di accesso? <a data-act="helpdesk">Contatta l'IT Helpdesk</a>
+      <br><span style="opacity:.5;margin-top:4px;display:block">Parking Cloud © 2026</span>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ ATTIVAZIONE ACCOUNT (invite-only) ══════════════════ -->
+<div id="view-activate" class="view">
+  <div class="login-wrap">
+    <div class="login-logo">
+      <div class="pc-logo pc-logo-lg">
+        <div class="pc-logo-icon">🅿</div>
+        <div class="pc-logo-text"><span class="pc-parking">parking</span><span class="pc-cloud">CLOUD</span></div>
+      </div>
+    </div>
+    <div class="login-card" id="activate-card"></div>
+    <div class="login-footer">
+      <a data-act="annulla-attivazione">← Torna al login</a>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════ FACILITY MANAGER ══════════════════════ -->
+<div id="view-fm" class="view">
+  <div class="app-layout">
+    <aside class="sidebar" id="fm-sidebar"></aside>
+    <div class="fm-main">
+      <header class="topbar" id="fm-topbar"></header>
+      <div class="content">
+        <div class="tabbar scroll-x" id="fm-tabbar"></div>
+        <div id="fm-section"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ VISTA DIPENDENTE ═══════════════════════ -->
+<div id="view-employee" class="view">
+  <header class="emp-topbar" id="emp-topbar"></header>
+  <div class="emp-content" id="emp-content"></div>
+</div>
+
+<!-- overlay unico per tutti i modali -->
+<div id="modal-root" class="modal-overlay hidden" data-act="modal-close"></div>
+<div id="toast-el"></div>
+
+<script src="state.js"></script>
+<script src="ui.js"></script>
+<script src="modals.js"></script>
+<script src="fm/dashboard.js"></script>
+<script src="fm/mappa.js"></script>
+<script src="fm/accessi.js"></script>
+<script src="fm/prenotazioni.js"></script>
+<script src="fm/segnalazioni.js"></script>
+<script src="fm/dipendenti.js"></script>
+<script src="fm/visitatori.js"></script>
+<script src="fm/hardware.js"></script>
+<script src="fm/config.js"></script>
+<script src="fm/analytics.js"></script>
+<script src="fm/amministrazione.js"></script>
+<script src="employee/index.js"></script>
+
+<script>
+/* ============================================================================
+   ROUTER / SHELL
+   Un'unica funzione render(): ogni mutazione dello stato ridisegna la vista
+   attiva. Nessuna sezione aggiorna il DOM di un'altra sezione.
+============================================================================ */
+(function (global) {
+'use strict';
+const { UI, State, Selectors: S, Actions: A, Modals, Sezioni } = global.PC;
+
+const NAV = [
+  { gruppo: 'Operativo',    voci: [
+    { id: 'dashboard',    ico: '◉',  label: 'Dashboard Live', perm: 'dashboard' },
+    { id: 'mappa',        ico: '🗺', label: 'Mappa Stalli', perm: 'mappa' },
+    { id: 'accessi',      ico: '⇆',  label: 'Accessi',      badge: 'accessi',     colore: 'nb-red', perm: 'accessi' },
+    { id: 'prenotazioni', ico: '📅', label: 'Prenotazioni', perm: 'prenotazioni' },
+    { id: 'analytics',    ico: '📊', label: 'Analytics', perm: 'analytics' },
+    { id: 'segnalazioni', ico: '🚨', label: 'Segnalazioni', badge: 'segnalazioni', colore: 'nb-red', perm: 'segnalazioni' }
+  ]},
+  { gruppo: 'Persone',      voci: [
+    { id: 'dipendenti',   ico: '👥', label: 'Dipendenti',   badge: 'dipendenti',  colore: 'nb-amber', perm: 'dipendenti' },
+    { id: 'visitatori',   ico: '🪪', label: 'Visitatori', perm: 'visitatori' }
+  ]},
+  { gruppo: 'Sistema',      voci: [
+    { id: 'hardware',     ico: '⚡', label: 'Hardware · 2N', perm: 'hardware' },
+    { id: 'config',       ico: '⚙',  label: 'Policy & Config', perm: 'config' },
+    { id: 'export',       ico: '⤓',  label: 'Esporta Report', modale: 'export' },
+    /* visibile solo se PERMISSIONS[ruolo].amministrazione === true */
+    { id: 'amministrazione', ico: '⚙', label: 'Amministrazione', perm: 'amministrazione' }
+  ]},
+  { gruppo: 'Prossimamente', voci: [
+    { id: 'esterni',      ico: '💰', label: 'Accessi Esterni', bloccata: true },
+    { id: 'multisede',    ico: '🏢', label: 'Multi-sede',      bloccata: true }
+  ]}
+];
+
+const TABS = [
+  ['dashboard', '◉ Live'], ['mappa', '🗺 Mappa'], ['accessi', '⇆ Accessi'],
+  ['prenotazioni', '📅 Prenotazioni'], ['analytics', '📊 Analytics'],
+  ['segnalazioni', '🚨 Segnalazioni'],
+  ['dipendenti', '👥 Dipendenti'], ['visitatori', '🪪 Visitatori'],
+  ['hardware', '⚡ 2N'], ['config', '⚙ Config'],
+  ['amministrazione', '⚙ Amministrazione']   // filtrata dai permessi: solo Admin
+];
+
+/* ---- SIDEBAR ---- */
+function renderSidebar() {
+  const b = S.badges();
+  const sede = State.config.sede;
+  const utente = S.utenteCorrente() || {};
+  const ruolo = State.ui.ruolo;
+  const isAdmin = ruolo === 'admin';
+  const kpi = S.kpiStalli();
+  const hw = S.kpiHardware();
+
+  UI.mount('#fm-sidebar', `
+    <div class="sb-logo">
+      <div class="pc-logo">
+        <div class="pc-logo-icon">🅿</div>
+        <div class="pc-logo-text"><span class="pc-parking">parking</span><span class="pc-cloud">CLOUD</span></div>
+      </div>
+      <div class="sb-sub">${isAdmin ? 'Console Amministrazione' : 'Facility Manager Console'}</div>
+      <div class="sb-client"><div class="live"></div>
+        <div><div style="font-weight:700;font-size:11.5px">${UI.esc(sede.nomeBreve)}</div>
+        <div style="font-size:9.5px;opacity:.6">${kpi.totale} posti · 2N ${hw.online}/${hw.totale} online</div></div>
+      </div>
+    </div>
+    <nav class="sb-nav">
+      ${NAV.map(g => {
+        /* una voce compare solo se il ruolo corrente ne ha il permesso */
+        const voci = g.voci.filter(v => !v.perm || S.puo(v.perm));
+        if (!voci.length) return '';
+        return `<div class="sb-section">${g.gruppo}</div>` + voci.map(v => {
+        if (v.bloccata) return `<div class="sb-item disabled-nav"><span class="ico">${v.ico}</span>${v.label}<span style="margin-left:auto;font-size:10px;opacity:.3">🔒</span></div>`;
+        const n = v.badge ? b[v.badge] : 0;
+        return `<div class="sb-item${State.ui.sezione === v.id ? ' active' : ''}"${UI.act(v.modale ? 'apri-modale' : 'nav', v.modale ? { modale: v.modale } : { sezione: v.id })}>
+          <span class="ico">${v.ico}</span>${v.label}${n ? `<span class="nbadge ${v.colore}">${n}</span>` : ''}</div>`;
+      }).join(''); }).join('')}
+    </nav>
+    <div class="sb-footer">
+      <div class="sb-user">
+        ${UI.avatar(utente.iniziali || '?')}
+        <div style="min-width:0">
+          <div class="sb-uname">${UI.esc(utente.nomeCompleto || '—')}</div>
+          <div class="sb-urole">${isAdmin
+            ? '<span class="role-badge role-badge-admin">Admin</span>'
+            : UI.esc(S.etichettaRuolo(ruolo))}</div>
+        </div>
+        <div class="sb-logout" data-act="logout" title="Esci">⏻</div>
+      </div>
+    </div>`);
+}
+
+/* ---- TOPBAR ---- */
+function renderTopbar() {
+  const sede = State.config.sede;
+  const hw = S.kpiHardware();
+  const okHw = hw.anomalie === 0;
+  UI.mount('#fm-topbar', `
+    <div class="topbar-title"><span class="pc-parking pc-parking-dark">parking</span><span class="pc-cloud pc-cloud-dark">CLOUD</span> <small>${UI.esc(sede.descrizione)} · ${S.kpiStalli().totale} posti</small></div>
+    <div style="display:flex;gap:7px;align-items:center">
+      <div class="hw-chip"${UI.act('nav', { sezione: 'hardware' })} title="${okHw ? 'Tutti i dispositivi online' : hw.anomaliaNome + ' in anomalia'}">
+        <span class="dot dot-${okHw ? 'ok' : 'warn'}"></span>2N ${okHw ? 'Online' : hw.online + '/' + hw.totale}
+      </div>
+      ${UI.btn('📅 ' + UI.esc(State.config.periodo.label), { azione: 'apri-modale', params: { modale: 'daterange' }, sm: false, stile: 'font-size:12px;padding:7px 12px' })}
+      ${UI.btn('⤓', { azione: 'apri-modale', params: { modale: 'export' }, sm: false, stile: 'padding:7px 10px' })}
+      ${UI.btn('🪪 + Pass Visitatore', { azione: 'apri-modale', params: { modale: 'add-vis' }, variante: 'btn-cyan' })}
+      ${UI.btn('+ Aggiungi', { azione: 'apri-modale', params: { modale: 'add-user' }, variante: 'btn-primary' })}
+    </div>`);
+}
+
+function renderTabs() {
+  /* le tab orizzontali seguono gli stessi permessi della sidebar */
+  const visibili = TABS.filter(([id]) => S.puo(id));
+  UI.mount('#fm-tabbar', visibili.map(([id, label]) =>
+    `<div class="tab-btn${State.ui.sezione === id ? ' active' : ''}"${UI.act('nav', { sezione: id })}>${label}</div>`).join(''));
+}
+
+/* ---- ATTIVAZIONE ACCOUNT ---- */
+function renderActivate() {
+  const att = State.ui.attivazione;
+  if (!att) { A.logout(); return; }
+  const u = S.utentePiattaforma(att.utenteId) || S.dipendente(att.utenteId) || {};
+  const invitante = S.nomePersona(att.invitatoDa);
+  const ruoloLbl = att.tipo === 'piattaforma' ? S.etichettaRuolo(u.ruolo) : 'Dipendente';
+
+  UI.mount('#activate-card', `
+    <div class="login-title">Attiva il tuo account</div>
+    <div class="login-sub">Benvenuto, <strong>${UI.esc(u.nome || u.nomeCompleto || '')}</strong> · ${UI.esc(ruoloLbl)}</div>
+    ${UI.alert(`Hai ricevuto questo invito da <strong>${UI.esc(invitante)}</strong>${u.email ? ' per <span class="mono">' + UI.esc(u.email) + '</span>' : ''}.`, 'info')}
+    ${UI.campo('Crea password', UI.input({ tipo: 'password', id: 'att-pwd', placeholder: 'Almeno 8 caratteri' }))}
+    ${UI.campo('Conferma password', UI.input({ tipo: 'password', id: 'att-pwd2', placeholder: 'Ripeti la password' }))}
+    <div id="att-errore"></div>
+    ${UI.btn('Attiva account e accedi', { azione: 'conferma-attivazione', variante: 'login-btn', full: true, sm: false, stile: 'font-size:14px;padding:12px;margin-top:6px' })}
+  `);
+}
+
+/* ---- RENDER PRINCIPALE ---- */
+const VIEW_ID = { fm: 'view-fm', dipendente: 'view-employee', attiva: 'view-activate', login: 'view-login' };
+
+function render() {
+  const vista = State.ui.vista;
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById(VIEW_ID[vista] || 'view-login').classList.add('active');
+
+  if (vista === 'fm') {
+    renderSidebar(); renderTopbar(); renderTabs();
+    /* difesa: se la sezione non è permessa al ruolo, ripiega su dashboard */
+    let id = State.ui.sezione;
+    if (!Sezioni[id] || !S.puo(id)) id = 'dashboard';
+    UI.mount('#fm-section', Sezioni[id].render());
+  } else if (vista === 'dipendente') {
+    Sezioni.dipendenteView.render();
+  } else if (vista === 'attiva') {
+    renderActivate();
+  }
+  if (Modals.corrente) Modals._render();   // tiene il modale allineato allo stato
+}
+
+/* ---- HANDLER GLOBALI ---- */
+UI.on('nav', d => A.vaiA(d.sezione));
+UI.on('apri-modale', d => Modals.open(d.modale, d));
+UI.on('logout', () => { Modals.close(); A.logout(); });
+UI.on('helpdesk', () => UI.toast('Contatta IT Helpdesk: ' + State.config.sede.helpdesk));
+
+UI.on('usa-demo', d => { document.getElementById('login-email').value = d.email; });
+
+UI.on('login', () => {
+  const r = A.loginConEmail(document.getElementById('login-email').value);
+  if (r.errore) { UI.toast(r.errore); return; }
+  UI.toast(`Bentornato ${r.utente.nome} · ${S.etichettaRuolo(r.ruolo)}`);
+});
+
+UI.on('annulla-attivazione', () => A.logout());
+
+UI.on('conferma-attivazione', () => {
+  const p1 = document.getElementById('att-pwd').value;
+  const p2 = document.getElementById('att-pwd2').value;
+  const box = document.getElementById('att-errore');
+  const err = !p1 ? 'Inserisci una password.'
+            : p1.length < 8 ? 'La password deve avere almeno 8 caratteri.'
+            : p1 !== p2 ? 'Le due password non coincidono.' : null;
+  if (err) { box.innerHTML = UI.alert(err, 'danger'); return; }
+  const r = A.completaAttivazione();
+  if (r.errore) { UI.toast(r.errore); return; }
+  UI.toast(`✓ Account attivato · benvenuto ${r.utente.nome}`);
+});
+
+/* ---- BOOT ---- */
+document.getElementById('login-sede').textContent = State.config.sede.descrizione;
+global.PC.Store.subscribe(render);
+render();
+
+})(window);
+</script>
+</body>
+</html>
