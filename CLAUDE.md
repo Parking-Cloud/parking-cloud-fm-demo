@@ -157,6 +157,20 @@ Dopo ogni blocco verificato, aggiorna `CHANGELOG.md`:
 - [lista]
 ```
 
+**DEPLOY: dopo ogni bundle rigenerato, eseguire
+`git add . && git commit -m '[blocco]' && git push origin main`.
+Netlify rideploya automaticamente.**
+
+Da eseguire **sempre e senza attendere istruzioni esplicite**, come ultimo
+passo di ogni blocco. Il messaggio di commit è il nome e numero del blocco
+(es. `CODE-16: ...`).
+
+> Perché funziona: `netlify.toml` pubblica la cartella `dist/`, che è
+> versionata. Non c'è un build command remoto — Netlify serve il file che
+> trova nel repo. **Se dimentichi `python build.py` prima del commit, il push
+> va a buon fine ma online resta la versione precedente.** Rigenera sempre il
+> bundle prima di committare.
+
 ---
 
 ## REGOLE INVIOLABILI
