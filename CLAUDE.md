@@ -46,6 +46,12 @@ Dopo ogni blocco, esegui e riporta i risultati con ✅ ❌ ⚠️.
 > i nodi DOM raccolti prima diventano orfani. Ri-cerca l'elemento a ogni
 > iterazione, altrimenti ottieni falsi ❌.
 
+> ⚠️ **Trappola nota negli script di patch:** in Python `\\uXXXX` dentro una
+> stringa non-raw diventa il carattere reale, e non combacia con un file che
+> contiene l'escape letterale (o viceversa). Peggio: `\\U0001XXXX` **non e' un
+> escape JavaScript** — il motore lo legge come la lettera `U` seguita dalle
+> cifre. Usa il carattere letterale, o ancoraggi solo-ASCII.
+
 #### LOGIN E NAVIGAZIONE
 - [ ] Login `admin@parkingcloud.eu` → console FM con badge Admin **nel topbar in alto a destra** (dal CODE-19; prima era nel footer sidebar)
 - [ ] Login `manager@demo.parkingcloud.eu` → console FM senza Amministrazione
@@ -108,10 +114,12 @@ Dopo ogni blocco, esegui e riporta i risultati con ✅ ❌ ⚠️.
 - [ ] Estendi → orario aggiornato
 - [ ] "+ Nuovo Pass" → modal, crea, appare in lista
 
-#### HARDWARE
-- [ ] Tabella dispositivi si carica
-- [ ] Click riga → modal con dati di QUEL dispositivo
-- [ ] "Aggiorna firmware" → versione cambia nel dispositivo
+#### HARDWARE (ridisegnata nel CODE-20)
+- [ ] **Due card**: "Barriere di accesso" e "Modalità di accesso per zona"
+- [ ] Click su una barriera → modal con dati di QUELLA barriera
+- [ ] "Aggiorna firmware" → versione cambia nella barriera
+- [ ] "+ Aggiungi barriera" → modal, crea, compare in tabella; "Rimuovi" la toglie
+- [ ] CARD 2: badge Automatico / Azione rapida / Manuale coerenti con le zone
 - [ ] Toggle → stato aggiornato
 
 #### POLICY & CONFIG
@@ -130,7 +138,10 @@ Dopo ogni blocco, esegui e riporta i risultati con ✅ ❌ ⚠️.
 - [ ] Hero con stallo fisso e dipartimento corretti
 - [ ] Chip finestra prenotazione riflette config FM
 - [ ] Click giorno libero → prenota → giorno blu
-- [ ] Smart Working → giorno ambra
+- [ ] Click giorno **già prenotato** → modal dettaglio (stato, check-in, orari, cancella)
+- [ ] "Modifica giorno" nel dettaglio → riapre la prenotazione → Smart Working → giorno ambra
+- [ ] Giorno di oggi: badge "OGGI" e bordo spesso se prenotato
+- [ ] Check-in coerente col metodo della zona; dopo il check-in timer + "⏹ Check-out"
 - [ ] Cancella prenotazione → giorno verde E stallo libero in mappa FM
 - [ ] "Succ ›" funziona se entro finestra; "Prec" disabilitato su settimana corrente
 - [ ] "🚨 Segnala" → modal, invia, appare in FM Segnalazioni
@@ -141,7 +152,9 @@ Dopo ogni blocco, esegui e riporta i risultati con ✅ ❌ ⚠️.
 - [ ] Dipendente SW → stallo libero in mappa FM
 - [ ] FM gestisce segnalazione → badge sidebar aggiornato
 - [ ] FM modifica stallo → mappa e KPI aggiornati
-- [ ] Config `maxBookingWeeks=2` → dipendente vede 2 settimane
+- [ ] Config `finestraGiorniLavorativi` → il chip del dipendente si aggiorna
+- [ ] Nome sede cambiato in Config → topbar e sidebar aggiornati
+- [ ] Nessuna occorrenza di "2N" / "1Control" in nessuna sezione
 
 ### FASE 4 — DOCUMENTA
 
@@ -220,7 +233,7 @@ click → data-act → Actions.*  →  Store.emit()  →  render() della vista a
 |------|----------------|
 | `src/state.js` | AppState, Selectors, Actions, Store. **Unica fonte di verità** |
 | `src/ui.js` | Componenti riutilizzabili + event delegation |
-| `src/modals.js` | Registro dei 25 modali |
+| `src/modals.js` | Registro dei 34 modali |
 | `src/index.html` | Shell, routing, sidebar/topbar, view-activate |
 | `src/fm/*.js` | Una sezione FM per file |
 | `src/employee/index.js` | Vista Dipendente |

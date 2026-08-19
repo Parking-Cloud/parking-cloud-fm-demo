@@ -105,7 +105,22 @@ function tabParcheggio() {
       </div>
     </div>`;
 
-  return `<div class="g2"><div>${cardZone}</div><div>${cardTipologie}${cardBloccata}</div></div>`;
+  /* Il nome sede si cambiava solo da Amministrazione: il FM che prepara la
+     demo per un cliente deve poterlo fare senza passare da un altro ruolo. */
+  const sede = State.config.sede;
+  const cardSede = UI.card({
+    titolo: '🏢 Informazioni sede',
+    sub: 'Compaiono nel topbar, nella sidebar e in tutti gli export',
+    stile: 'margin-bottom:14px',
+    azioni: [UI.btn('Salva', { azione: 'salva-info-sede', variante: 'btn-primary' })],
+    body: `<div class="form-grid2">
+      ${UI.campo('Nome sede', UI.input({ id: 'info-sede-nome', valore: sede.nome, focusKey: 'isede-n' }))}
+      ${UI.campo('Nome breve <span class="muted">(sidebar e topbar)</span>', UI.input({ id: 'info-sede-breve', valore: sede.nomeBreve || '', focusKey: 'isede-b' }))}
+    </div>
+    ${UI.campo('Indirizzo', UI.input({ id: 'info-sede-ind', valore: sede.indirizzo || '', focusKey: 'isede-i' }))}`
+  });
+
+  return cardSede + `<div class="g2"><div>${cardZone}</div><div>${cardTipologie}${cardBloccata}</div></div>`;
 }
 
 /* ── TAB 2 · POLICY ─────────────────────────────────────────────────────── */
@@ -225,7 +240,7 @@ function tabNotifiche() {
     body: [
       UI.setting('Alert segnalazione peer-to-peer', 'Notifica immediata a ogni segnalazione da dipendente',
         UI.toggle('toggle-notifica', n.peerToPeer, { chiave: 'peerToPeer' })),
-      UI.setting('Alert anomalia hardware', 'Cancello 2N, sbarra e Pilomat',
+      UI.setting('Alert anomalia hardware', 'Cancello, sbarra e pilomat',
         UI.toggle('toggle-notifica', n.anomaliaHardware, { chiave: 'anomaliaHardware' })),
       UI.setting('Sosta prolungata — notifica dipendente', `Inviata al superamento di ${State.config.prenotazioni.notificaDurataOre}h`,
         UI.toggle('toggle-notifica', n.sostaProlungata, { chiave: 'sostaProlungata' })),
@@ -373,6 +388,14 @@ UI.onChange('zona-metodo', (d, ev) => {
   UI.toast(`🔑 ${z.nome}: accesso via ${D.METODO_ACCESSO[z.metodoAccesso]}`);
 });
 
+UI.on('salva-info-sede', () => {
+  const val = (id) => ((document.getElementById(id) || {}).value || '').trim();
+  const nome = val('info-sede-nome');
+  if (!nome) { UI.toast('Il nome sede non puo\' essere vuoto'); return; }
+  A.aggiornaSede({ nome: nome, nomeBreve: val('info-sede-breve') || nome, indirizzo: val('info-sede-ind') });
+  UI.toast('✓ Informazioni sede aggiornate');
+});
+
 UI.on('aggiungi-zona', () => { const id = A.aggiungiZona(); UI.toast(`Zona ${id} aggiunta · imposta i posti e salva`); });
 UI.on('rimuovi-zona', d => {
   const n = State.stalli.filter(s => s.zonaId === d.zonaId).length;
@@ -434,7 +457,7 @@ UI.on('approva-req', d => {
   Modals._collect();
   const v = A.approvaRichiestaPass(d.richiestaId, Modals.form.note);
   Modals.close();
-  UI.toast(`✓ Approvato · codice My2N ${v.codiceMy2N} inviato a ${v.email}`);
+  UI.toast(`✓ Approvato · codice ${v.codiceAccesso} inviato a ${v.email}`);
 });
 UI.on('rifiuta-req', d => {
   /* _collect() PRIMA di leggere il form: senza, la motivazione scritta dal FM

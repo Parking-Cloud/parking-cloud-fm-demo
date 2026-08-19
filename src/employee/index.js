@@ -137,7 +137,7 @@ global.PC.Sezioni.dipendenteView = {
         </div>
         ${future.length ? future.map(p => {
           const d = U.fromISO(p.data);
-          return `<div class="my-booking-card"${UI.act('emp-apri-giorno', { giornoIso: p.data })}>
+          return `<div class="my-booking-card${p.data === U.OGGI_ISO ? ' mbc-oggi' : ''}${p.checkInTs && !p.checkOutTs ? ' mbc-dentro' : ''}"${UI.act('emp-apri-prenot', { prenotazioneId: p.id })}>
             <div><div class="mbc-date">${d.getDate()}</div><div class="mbc-month">${U.MONTHS_SHORT[d.getMonth()]}</div></div>
             <div class="mbc-info">
               <div class="mbc-spot">${p.tipo === 'ufficio'
@@ -146,21 +146,8 @@ global.PC.Sezioni.dipendenteView = {
               <div class="mbc-meta">${U.DAYS_FULL_IT[d.getDay()]} · ${p.tipo === 'ufficio' ? UI.esc((S.stallo(p.stalloId) || {}).piano || '') + ' · check-in via app' : 'nessuno stallo necessario'}</div>
             </div>
             <div class="mbc-actions">
-              ${p.tipo !== 'ufficio' ? UI.badge('Smart W.', 'amber')
-                : p.checkOutTs
-                  ? UI.badge('\u2713 Completato \u00b7 ' + U.fmtMinuti(Math.max(0, p.checkOutTs - p.checkInTs)), 'gray')
-                  : p.checkInTs
-                    ? UI.badge('\u2713 Dentro \u00b7 ' + UI.esc(p.checkIn) + ' \u00b7 via ' + UI.esc(p.metodoCheckIn === 'badge' ? 'badge' : 'app'), 'green', true)
-                    : UI.badge('Prenotato', 'blue')}
-              ${p.tipo === 'ufficio' && p.checkInTs && !p.checkOutTs
-                ? `<span class="mbc-timer">\u23f1 ${U.fmtMinuti((S.durataPrenotazioneAttiva(p.id) || 0) * 60000)}</span>`
-                  + UI.btn('\u23f9 Check-out', { azione: 'emp-checkout', params: { prenotazioneId: p.id }, variante: 'btn-danger' })
-                : ''}
-              ${p.tipo === 'ufficio' && !p.checkInTs ? `
-                ${UI.btn('\u25b6 Check-in App', { azione: 'emp-checkin', params: { prenotazioneId: p.id, metodo: 'app' }, variante: 'btn-primary' })}
-                ${UI.btn('\U0001FAAA Badge', { azione: 'emp-checkin', params: { prenotazioneId: p.id, metodo: 'badge' } })}
-                ${UI.btn('\U0001F4CB Mostra prenotazione', { azione: 'apri-modale', params: { modale: 'emp-mostra-prenotazione', prenotazioneId: p.id } })}` : ''}
-              ${UI.btn('Cancella', { azione: 'emp-apri-cancella', params: { giornoIso: p.data } })}
+              ${p.tipo !== 'ufficio' ? UI.badge('Smart W.', 'amber') : bloccoCheckIn(p)}
+              ${UI.btn('Dettagli', { azione: 'emp-apri-prenot', params: { prenotazioneId: p.id } })}
             </div>
           </div>`;
         }).join('') : UI.vuoto('Nessuna prenotazione futura. Clicca su un giorno del calendario per prenotare.')}
@@ -244,10 +231,10 @@ function sezioneRichieste(dip) {
                 ${UI.badge(lbl, col)}
               </div>
               <div class="emp-req-date">📅 ${UI.esc(U.fmtMedium(U.fromISO(r.dataInizio)))}${unGiorno ? '' : ' → ' + UI.esc(U.fmtMedium(U.fromISO(r.dataFine)))}</div>
-              ${r.stato === 'approvata' && r.codiceMy2N
+              ${r.stato === 'approvata' && r.codiceAccesso
                 ? `<div class="emp-code-box">
                      <span class="emp-code-lbl">Codice accesso</span>
-                     <span class="emp-code-val">${UI.esc(r.codiceMy2N)}</span>
+                     <span class="emp-code-val">${UI.esc(r.codiceAccesso)}</span>
                      <span class="emp-code-note">Valido dal ${UI.esc(U.fmtDM(U.fromISO(r.dataInizio)))} al ${UI.esc(U.fmtDM(U.fromISO(r.dataFine)))} · H24</span>
                    </div>`
                 : ''}
@@ -318,16 +305,113 @@ function cardGiorno(g, dip) {
   else if (fuoriFinestra)         { cls += ' day-past'; stato = 'Non prenotabile'; statoCls = 'past'; }
   else                            { cls += ' day-todo'; stato = '+ Prenota'; statoCls = 'free'; }
   if (isOggi) cls += ' day-today';
+  /* Il pallino da solo non bastava: su una griglia di cinque giorni tutti
+     uguali, il giorno in corso E' l'informazione principale. */
+  const dentro = pre && pre.checkInTs && !pre.checkOutTs;
+  if (isOggi && pre && pre.tipo === 'ufficio') cls += ' day-today-booked';
+  if (isOggi && dentro) cls += ' day-dentro';
 
   const cliccabile = !passato && !fuoriFinestra;
-  return `<div class="${cls}"${cliccabile ? UI.act('emp-apri-giorno', { giornoIso: iso }) : ''}>
-    ${isOggi ? '<div class="day-today-dot"></div>' : ''}
+  /* Su un giorno gia' prenotato si apre il DETTAGLIO, non di nuovo la
+     prenotazione: da li' si fa check-in, si spostano gli orari, si cancella. */
+  const azione = pre && pre.tipo === 'ufficio'
+    ? UI.act('emp-apri-prenot', { prenotazioneId: pre.id })
+    : UI.act('emp-apri-giorno', { giornoIso: iso });
+  return `<div class="${cls}"${cliccabile ? azione : ''}>
+    ${isOggi ? '<div class="day-oggi-badge">OGGI</div>' : ''}
     <div class="day-dow">${U.DAYS_IT[g.getDay()]}</div>
     <div class="day-num">${g.getDate()}</div>
     <div class="day-status ${statoCls}">${stato}</div>
     ${spot ? `<div class="day-spot">${UI.esc(spot)}</div>` : ''}
+    ${dentro ? `<div class="day-timer">\u23f1 ${U.fmtMinuti((S.durataPrenotazioneAttiva(pre.id) || 0) * 60000)}</div>` : ''}
   </div>`;
 }
+
+/* ============================================================================
+   CHECK-IN — la UI cambia con il LIVELLO DI INTERVENTO della zona, non con il
+   metodo. Sotto ANPR non ha senso un pulsante "Check-in": l'accesso e' gia'
+   avvenuto e chiederlo sarebbe una bugia. Sotto keypad, invece, il pulsante e'
+   l'unico modo che il sistema ha di sapere che sei entrato.
+   Il fallback manuale resta SEMPRE, a ogni livello: se il varco non legge, il
+   dipendente deve poter chiudere il cerchio da solo.
+   Esportato su PC.EmpUI perche' lo usa anche il modale emp-prenot-det.
+============================================================================ */
+function bloccoCheckIn(p, opt) {
+  opt = opt || {};
+  if (!p || p.tipo !== 'ufficio') return '';
+  const metodo = S.metodoAccessoPerStallo(p.stalloId);
+  const def = S.metodoDef(metodo);
+  const liv = D.LIVELLO_CHECKIN[def.tipoCheckIn];
+
+  /* --- gia' uscito --- */
+  if (p.checkOutTs) {
+    return `<div class="chk-box chk-done">
+      ${UI.badge('\u2713 Completato \u00b7 ' + U.fmtMinuti(Math.max(0, p.checkOutTs - p.checkInTs)), 'gray')}
+      <div class="chk-hint">Ingresso ${UI.esc(p.checkIn || '\u2014')} \u00b7 uscita ${UI.esc(p.checkOut || '\u2014')}</div>
+    </div>`;
+  }
+
+  /* --- dentro: timer + check-out, identici a ogni livello --- */
+  if (p.checkInTs) {
+    return `<div class="chk-box chk-in">
+      <div class="chk-row">
+        ${UI.badge('\u2713 Dentro \u00b7 dalle ' + UI.esc(p.checkIn), 'green', true)}
+        <span class="mbc-timer">\u23f1 ${U.fmtMinuti((S.durataPrenotazioneAttiva(p.id) || 0) * 60000)}</span>
+      </div>
+      <div class="chk-hint">Accesso registrato via ${UI.esc(S.metodoDef(p.metodoCheckIn || metodo).label)}</div>
+      ${UI.btn('\u23f9 Check-out', { azione: 'emp-checkout', params: { prenotazioneId: p.id }, variante: 'btn-danger' })}
+    </div>`;
+  }
+
+  /* --- non ancora entrato: la UI dipende dal livello --- */
+  const fallback = UI.btn('Check-in manuale (fallback)', {
+    azione: 'emp-checkin', params: { prenotazioneId: p.id, metodo: 'app' }
+  });
+
+  if (def.tipoCheckIn === 'zero') {
+    return `<div class="chk-box chk-auto">
+      <div class="chk-lead">${UI.badge(liv.badge, liv.colore)} ${UI.esc(def.label)}</div>
+      <div class="chk-text">Il tuo accesso viene rilevato automaticamente dalla telecamera.
+        Nessuna azione richiesta.</div>
+      ${fallback}
+    </div>`;
+  }
+
+  if (def.tipoCheckIn === 'azione') {
+    const dispositivo = metodo === 'badge' ? 'badge' : metodo === 'qr' ? 'telefono' : 'telefono';
+    const qr = metodo === 'qr'
+      ? `<div class="chk-qr"><div class="chk-qr-lbl">Codice prenotazione</div>
+           <div class="chk-qr-code">${UI.esc(p.id)}</div>
+           <div class="chk-qr-hint">Inquadra il lettore con l'app per trasmetterlo</div></div>`
+      : '';
+    return `<div class="chk-box chk-azione">
+      <div class="chk-lead">${UI.badge(liv.badge, liv.colore)} ${UI.esc(def.label)}</div>
+      <div class="chk-text">Accedi con ${UI.esc(def.label)} avvicinando il tuo ${dispositivo} al lettore.</div>
+      ${qr}
+      ${UI.btn('\u2713 Ho effettuato l\'accesso', { azione: 'emp-checkin', params: { prenotazioneId: p.id, metodo: metodo }, variante: 'btn-primary' })}
+      ${fallback}
+    </div>`;
+  }
+
+  /* livello 2 — manuale */
+  const testoPin = metodo === 'pin'
+    ? '<div class="chk-text">Inserisci il tuo PIN al keypad, poi conferma qui sotto.</div>' : '';
+  const etichetta = metodo === 'pin' ? '\u2713 Confermo accesso con PIN' : '\u25b6 Check-in';
+  const guardiano = metodo === 'guardiano'
+    ? UI.btn('📋 Mostra prenotazione al guardiano', { azione: 'apri-modale', params: { modale: 'emp-mostra-prenotazione', prenotazioneId: p.id }, sm: false })
+    : '';
+  return `<div class="chk-box chk-manuale">
+    <div class="chk-lead">${UI.badge(liv.badge, liv.colore)} ${UI.esc(def.label)}</div>
+    ${testoPin}
+    <div class="chk-cta">
+      ${UI.btn(etichetta, { azione: 'emp-checkin', params: { prenotazioneId: p.id, metodo: metodo }, variante: 'btn-success', sm: false })}
+      ${guardiano}
+    </div>
+    ${opt.senzaFallback ? '' : fallback}
+  </div>`;
+}
+
+global.PC.EmpUI = { bloccoCheckIn: bloccoCheckIn };
 
 /* ---- handler ---------------------------------------------------------- */
 UI.on('week-emp', d => A.empWeek(parseInt(d.delta, 10)));
@@ -362,6 +446,19 @@ UI.on('emp-apri-giorno', d => {
   Modals.open('emp-book', { giornoISO: d.giornoIso });
 });
 UI.on('emp-apri-cancella', d => Modals.open('emp-cancel', { giornoISO: d.giornoIso }));
+
+UI.on('emp-apri-prenot', d => Modals.open('emp-prenot-det', { prenotazioneId: d.prenotazioneId }));
+
+UI.on('emp-aggiorna-orari', d => {
+  Modals._collect();
+  const r = A.modificaOrariPrenotazione({
+    prenotazioneId: d.prenotazioneId,
+    oraInizio: Modals.form.oraInizio,
+    oraFine: Modals.form.oraFine
+  });
+  if (r && r.errore) { UI.toast(r.errore); return; }
+  UI.toast(`\u{1F553} Orari aggiornati \u00b7 ${r.oraInizio} \u2013 ${r.oraFine}`);
+});
 UI.on('emp-sel-tipo', d => { Modals._collect(); Modals.form.tipo = d.valore; Modals._render(); });
 
 /* selezione del turno: stesso schema di emp-sel-tipo, il re-render ricalcola

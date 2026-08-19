@@ -181,16 +181,61 @@ const STATO_STALLO = {
   bloccato:     { label: 'Bloccato',             cls: 'ms-maint' }
 };
 
-const METODO_ACCESSO = {
-  app:       'App mobile',
-  pin:       'PIN Keypad',
-  qr:        'QR Code',
-  bluetooth: 'Bluetooth',
-  targa:     'ANPR (targa)',
-  badge2n:   'Badge 2N',
-  app2n:     'App + 2N',
-  pass:      'Pass temporaneo',
-  nd:        '–'
+/* I metodi di accesso, classificati per QUANTO deve fare il dipendente.
+   E' la distinzione che conta in fase di vendita: "quanto e' comodo entrare",
+   non quale marca di hardware c'e' sul cancello.
+     zero    -> non fa nulla, il varco lo riconosce
+     azione  -> un gesto rapido (avvicina, scansiona), nessun dato da digitare
+     manuale -> deve digitare, mostrare qualcosa o farsi aprire
+   Il check-out manuale dall'app resta SEMPRE disponibile come fallback,
+   qualunque sia il metodo di ingresso. */
+const TIPI_METODO_ACCESSO = {
+  targa:       { label: 'ANPR (riconoscimento targa)', tipoCheckIn: 'zero',
+                 desc: 'Accesso rilevato automaticamente dalla telecamera. Nessuna azione richiesta dal dipendente.' },
+  qr:          { label: 'QR Code (scansione app)',     tipoCheckIn: 'azione',
+                 desc: 'Il dipendente inquadra il QR con l\'app.' },
+  bluetooth:   { label: 'Bluetooth (avvicina app)',    tipoCheckIn: 'azione',
+                 desc: 'Il varco si apre avvicinando lo smartphone.' },
+  badge:       { label: 'Badge / RFID',                tipoCheckIn: 'azione',
+                 desc: 'Il dipendente avvicina il badge al lettore.' },
+  pin:         { label: 'PIN Keypad',                  tipoCheckIn: 'manuale',
+                 desc: 'Il dipendente digita il PIN sul tastierino.' },
+  guardiano:   { label: 'Guardiano (con ricevuta)',    tipoCheckIn: 'manuale',
+                 desc: 'Accesso autorizzato dal personale in guardiola.' },
+  telecomando: { label: 'Telecomando',                 tipoCheckIn: 'manuale',
+                 desc: 'Apertura con telecomando personale.' },
+  locker:      { label: 'Locker (codice/chiave)',      tipoCheckIn: 'manuale',
+                 desc: 'Ritiro chiave o codice da armadietto.' },
+  prossimita:  { label: 'Sensore prossimità',          tipoCheckIn: 'manuale',
+                 desc: 'Rilevazione a corto raggio con conferma.' },
+  libero:      { label: 'Libero (senza controllo)',    tipoCheckIn: 'manuale',
+                 desc: 'Nessun varco: accesso libero.' },
+  app:         { label: 'App mobile',                  tipoCheckIn: 'manuale',
+                 desc: 'Apertura dall\'app del dipendente.' }
+};
+/* Il check-out non dipende dal metodo: e' sempre manuale dall'app finche'
+   l'integrazione hardware non lo automatizza. */
+const CHECKOUT_MANUALE_SEMPRE = true;
+
+/* Mappa di sole etichette: molte viste vogliono solo la stringa. */
+const METODO_ACCESSO = Object.keys(TIPI_METODO_ACCESSO)
+  .reduce((o, k) => { o[k] = TIPI_METODO_ACCESSO[k].label; return o; },
+          { pass: 'Pass temporaneo', nd: '–' });
+
+const LIVELLO_CHECKIN = {
+  zero:    { badge: 'Automatico',    colore: 'green', checkIn: 'Automatico (telecamera)' },
+  azione:  { badge: 'Azione rapida', colore: 'blue',  checkIn: 'Azione dipendente (app/badge)' },
+  manuale: { badge: 'Manuale',       colore: 'amber', checkIn: 'Manuale (da app)' }
+};
+
+/* Barriere fisiche: cosa c'e' all'ingresso, indipendentemente da come si apre. */
+const TIPI_BARRIERA = {
+  sbarra:   'Sbarra automatica',
+  cancello: 'Cancello',
+  pilomat:  'Pilomat',
+  tornello: 'Tornello',
+  porta:    'Porta elettrica',
+  libero:   'Libero / senza barriere'
 };
 
 const TIPO_SEGNALAZIONE = {
@@ -204,8 +249,8 @@ const TIPO_SEGNALAZIONE = {
 
 /* Dispositivi supportati: in produzione + integrazioni in roadmap */
 const TIPI_HW = {
-  tastierino2n: { label: 'Tastierino 2N',        icona: '🔢', metodoAccesso: 'pin'       },
-  bluetooth:    { label: 'Bluetooth / 1Control', icona: '📶', metodoAccesso: 'bluetooth' },
+  tastierino2n: { label: 'Tastierino a codice', icona: '🔢', metodoAccesso: 'pin'       },
+  bluetooth:    { label: 'Lettore Bluetooth',   icona: '📶', metodoAccesso: 'bluetooth' },
   anpr:         { label: 'Telecamera ANPR',      icona: '📷', metodoAccesso: 'targa'     },
   qrreader:     { label: 'Lettore QR Code',      icona: '📱', metodoAccesso: 'qr'        },
   sbarra:       { label: 'Sbarra automatica',    icona: '🚧', metodoAccesso: null        },
@@ -273,20 +318,24 @@ const SEDE = {
    Incoerenza risolta portando la Zona A a 42 → totale esattamente 156.
    Il KPI "Posti Totali" è comunque derivato da stalli.length.            */
 /* Il metodo di accesso e' un attributo della ZONA, non della persona:
-   dipende dal varco fisico installato li'. Zona B ha il cancello 2N (PIN),
+   dipende dal varco fisico installato li'. Zona B ha il cancello con tastierino,
    la EV il lettore QR, e cosi' via. */
+/* I metodi di zona coprono di proposito tutti e tre i livelli di intervento:
+   con un seed tutto 'app' la colonna "Livello intervento" mostrerebbe sempre
+   "Manuale" e la differenza fra ANPR e keypad — che e' il punto della demo —
+   non si vedrebbe mai. */
 const ZONE_SEED = [
-  { id: 'A',  nome: 'Zona A — Piano -1',        piano: 'Piano -1', posti: 42, tipoDefault: 'standard',   colore: 'gold',   metodoAccesso: 'app', note: '' },
-  { id: 'B',  nome: 'Zona B — Piano -1 (2N)',   piano: 'Piano -1', posti: 48, tipoDefault: 'standard',   colore: 'gold',   metodoAccesso: 'pin', note: 'Accesso cancello 2N' },
-  { id: 'C',  nome: 'Zona C — Piano -2',        piano: 'Piano -2', posti: 36, tipoDefault: 'standard',   colore: 'gold',   metodoAccesso: 'app', note: '' },
-  { id: 'V',  nome: 'Zona V — Visitatori',      piano: 'Piano -1', posti: 16, tipoDefault: 'visitatori', colore: 'purple', metodoAccesso: 'pin', note: 'Riservata pass temporanei · codice My2N' },
-  { id: 'EV', nome: 'Zona EV ⚡',               piano: 'Piano -1', posti:  6, tipoDefault: 'ev',         colore: 'sky',    metodoAccesso: 'qr',  note: 'Colonnine 22 kW' },
-  { id: 'H',  nome: 'Zona H — ♿ Disabili',      piano: 'Piano -1', posti:  8, tipoDefault: 'disabili',   colore: 'blue',   metodoAccesso: 'app', note: '' }
+  { id: 'A',  nome: 'Zona A — Piano -1',        piano: 'Piano -1', posti: 42, tipoDefault: 'standard',   colore: 'gold',   metodoAccesso: 'targa',     note: 'Varco ANPR: nessuna azione richiesta' },
+  { id: 'B',  nome: 'Zona B — Piano -1',        piano: 'Piano -1', posti: 48, tipoDefault: 'standard',   colore: 'gold',   metodoAccesso: 'pin',       note: 'Accesso da cancello con tastierino' },
+  { id: 'C',  nome: 'Zona C — Piano -2',        piano: 'Piano -2', posti: 36, tipoDefault: 'standard',   colore: 'gold',   metodoAccesso: 'bluetooth', note: 'Apertura in prossimità da app' },
+  { id: 'V',  nome: 'Zona V — Visitatori',      piano: 'Piano -1', posti: 16, tipoDefault: 'visitatori', colore: 'purple', metodoAccesso: 'pin',       note: 'Riservata pass temporanei · codice di accesso' },
+  { id: 'EV', nome: 'Zona EV ⚡',               piano: 'Piano -1', posti:  6, tipoDefault: 'ev',         colore: 'sky',    metodoAccesso: 'qr',        note: 'Colonnine 22 kW' },
+  { id: 'H',  nome: 'Zona H — ♿ Disabili',      piano: 'Piano -1', posti:  8, tipoDefault: 'disabili',   colore: 'blue',   metodoAccesso: 'guardiano', note: 'Accesso assistito dal presidio' }
 ];
 
-/* Metodi assegnabili a una zona dalla Config. Sottoinsieme di METODO_ACCESSO:
-   badge/pass/app2n sono stati storici, non varchi configurabili. */
-const METODI_ZONA = ['app', 'pin', 'qr', 'bluetooth', 'targa'];
+/* Metodi assegnabili a una zona dalla Config: tutti quelli della tassonomia,
+   perche' dal CODE-20 ogni metodo e' un varco realmente configurabile. */
+const METODI_ZONA = Object.keys(TIPI_METODO_ACCESSO);
 
 /* Stalli fuori servizio nel seed (mostrano il colore "manutenzione" in mappa) */
 const STALLI_MANUTENZIONE = ['C-35', 'C-36'];
@@ -480,7 +529,7 @@ function buildPrenotazioni(dipendenti, stalli) {
         checkIn: minutesToHHMM(rInt(7 * 60 + 40, 9 * 60 + 30)),
         checkOut: minutesToHHMM(rInt(13 * 60, 18 * 60)),
         creataDa: 'dipendente',
-        turnoId: null              // null = prenotazione giornaliera
+        turnoId: null, oraInizio: '09:00', oraFine: '18:00'              // null = prenotazione giornaliera
       });
     }
     const swQuanti = Math.round(conf.sw * (0.8 + (idx % 4) * 0.1));
@@ -490,7 +539,7 @@ function buildPrenotazioni(dipendenti, stalli) {
         id: nextId('PRE'), dipendenteId: dip.id, data: iso, tipo: 'sw',
         stalloId: null, stato: 'completata', checkIn: null, checkOut: null,
         creataDa: 'dipendente',
-        turnoId: null
+        turnoId: null, oraInizio: '09:00', oraFine: '18:00'
       });
     }
   });
@@ -532,7 +581,7 @@ function buildPrenotazioni(dipendenti, stalli) {
         checkIn:  stato !== 'attiva' ? minutesToHHMM(rInt(7 * 60 + 40, 9 * 60 + 30)) : null,
         checkOut: stato === 'completata' ? minutesToHHMM(rInt(13 * 60, 17 * 60)) : null,
         creataDa: 'dipendente',
-        turnoId: null
+        turnoId: null, oraInizio: '09:00', oraFine: '18:00'
       });
       return true;
     };
@@ -600,7 +649,7 @@ function applicaPatternEvidenza(prenotazioni, dipendenti, stalli) {
         stato: 'attiva',
         checkIn: null, checkOut: null,
         creataDa: 'dipendente',
-        turnoId: null
+        turnoId: null, oraInizio: '09:00', oraFine: '18:00'
       });
     });
   });
@@ -640,7 +689,7 @@ function buildVisitatori(dipendenti) {
     stato: v.stato,                     // atteso | dentro | uscito | revocato
     zonaErrata: !!v.zonaErrata,
     scaduto: !!v.scaduto,
-    codiceMy2N: String(rInt(1000, 9999)),
+    codiceAccesso: String(rInt(1000, 9999)),
     referenteId: i % 3 === 0 ? fmId : (dipendenti[(i % 12)] || dipendenti[0]).id,
     creatoIl: OGGI_ISO
   }));
@@ -659,7 +708,7 @@ function buildVisitatori(dipendenti) {
         stalloId: 'V-' + String((i % 16) + 1).padStart(2, '0'),
         data: isoG, oraInizio: base.da, oraFine: base.a,
         stato: 'uscito', zonaErrata: false, scaduto: false,
-        codiceMy2N: String(rInt(1000, 9999)),
+        codiceAccesso: String(rInt(1000, 9999)),
         referenteId: fmId, creatoIl: isoG
       });
     }
@@ -717,7 +766,7 @@ function buildAccessi(prenotazioni, dipendenti, visitatori) {
       stalloId: v.stalloId,
       ingresso: v.oraInizio,
       uscita: v.stato === 'uscito' ? v.oraFine : null,
-      metodo: 'pin',        /* il codice My2N del pass e' un PIN sul tastierino */
+      metodo: 'pin',        /* il codice del pass e' un PIN sul tastierino */
       stato: v.stato === 'uscito' ? 'uscito' : 'dentro',
       anomalia: v.zonaErrata ? 'zona' : null,
       targa: null,
@@ -740,7 +789,7 @@ function buildAccessi(prenotazioni, dipendenti, visitatori) {
     id: nextId('ACC'), data: OGGI_ISO, tipo: 'dipendente',
     personaId: null, personaNome: 'Veicolo EK 447 MN',
     stalloId: 'A-31', ingresso: hhmm(overstay), uscita: null,
-    metodo: 'badge2n', stato: 'dentro', anomalia: 'durata', targa: 'EK 447 MN',
+    metodo: 'badge', stato: 'dentro', anomalia: 'durata', targa: 'EK 447 MN',
     ingressoTs: overstay.getTime(),
     prenotazioneId: null
   });
@@ -859,35 +908,30 @@ function buildSegnalazioni(dipendenti) {
   return out;
 }
 
-/* --- 2.7 Hardware 2N ------------------------------------------------------ */
+/* --- 2.7 Barriere di accesso ------------------------------------------------------ */
 function buildHardware() {
-  const ev = (min) => hhmm(new Date(Date.now() - min * 60000));
-  return [
-    { id: nextId('HW'), nome: 'Cancello 2N',       tipo: 'tastierino2n', ruolo: 'principale',
-      cicli: 286, stato: 'online', ip: '192.168.1.40', firmware: 'v5.3.2',
-      ultimoEvento: 'Ultimo ciclo ' + ev(4), messaggio: null },
-
-    { id: nextId('HW'), nome: 'Lettore QR Code',   tipo: 'qrreader', ruolo: 'ausiliario',
-      cicli: 143, stato: 'online', ip: '192.168.1.41', firmware: 'v1.4.0',
-      ultimoEvento: 'Ultima scansione ' + ev(7), messaggio: null },
-
-    { id: nextId('HW'), nome: 'Sbarra automatica', tipo: 'sbarra', ruolo: 'ausiliario',
-      cicli: 118, stato: 'online', ip: '192.168.1.42', firmware: 'v2.1.0',
-      ultimoEvento: 'Ultimo ciclo ' + ev(11), messaggio: null },
-
-    { id: nextId('HW'), nome: 'Sistema Bluetooth', tipo: 'bluetooth', ruolo: 'ausiliario',
-      cicli: 0, stato: 'in_configurazione', ip: null, firmware: 'v0.9.1-beta',
-      ultimoEvento: 'Integrazione 1Control in corso', messaggio: 'Integrazione One Control in fase di test.' },
-
-    { id: nextId('HW'), nome: 'Telecamera ANPR',   tipo: 'anpr', ruolo: 'ausiliario',
-      cicli: 0, stato: 'in_configurazione', ip: null, firmware: 'v0.8.0-beta',
-      ultimoEvento: 'Integrazione Infoproget in corso', messaggio: 'Riconoscimento targhe in fase di attivazione.' },
-
-    { id: nextId('HW'), nome: 'Pilomat #1',        tipo: 'pilomat', ruolo: 'ausiliario',
-      cicli: 12, stato: 'anomalia', ip: '192.168.1.45', firmware: 'v3.2.1',
-      ultimoEvento: 'Sensor timeout 09:47', messaggio: 'Sensor timeout · verificare alimentazione.' }
-  ];
+  /* Due blocchi distinti: le BARRIERE sono l'ostacolo fisico, il METODO di
+     accesso vive sulla zona (vedi ZONE_SEED). Prima erano la stessa cosa, e
+     non si poteva avere un cancello superabile in due modi diversi. */
+  return {
+    barriere: [
+      { id: 'BAR-01', tipo: 'cancello', label: TIPI_BARRIERA.cancello, zona: 'B',
+        stato: 'online',   note: 'Ingresso principale',
+        ip: '10.20.0.11', firmware: 'v2.42.1', cicli: 214, ticket: null,
+        ultimoEvento: 'Apertura 09:52', messaggio: '' },
+      { id: 'BAR-02', tipo: 'sbarra',   label: TIPI_BARRIERA.sbarra,   zona: 'A',
+        stato: 'online',   note: '',
+        ip: '10.20.0.12', firmware: 'v1.8.0',  cicli: 168, ticket: null,
+        ultimoEvento: 'Apertura 09:58', messaggio: '' },
+      { id: 'BAR-03', tipo: 'pilomat',  label: TIPI_BARRIERA.pilomat,  zona: 'V',
+        stato: 'anomalia', note: 'Sensor timeout 09:47',
+        ip: '10.20.0.13', firmware: 'v1.4.6',  cicli:  31, ticket: null,
+        ultimoEvento: 'Timeout sensore 09:47',
+        messaggio: 'Il sensore di presenza non risponde: la barriera resta abbassata.' }
+    ]
+  };
 }
+
 
 /* --- 2.8 Config ----------------------------------------------------------- */
 function buildConfig() {
@@ -929,7 +973,7 @@ function buildConfig() {
       reportSettimanale: true,
       emailDestinatari: ['facility.manager@parkingcloud.eu']
     },
-    hardware2n: {
+    hardware: {
       codiceTemporaneoVisitatori: true,
       logAccessiCloud: true,
       integrazioneHr: 'in_valutazione'   // SSO / HR feed
@@ -988,7 +1032,7 @@ function buildRichiestePass(dipendenti) {
     dataFine:   toISO(addDays(OGGI, 2)),
     stato: 'in_attesa',
     note: '',
-    codiceMy2N: null,
+    codiceAccesso: null,
     esitoIlTs: null,
     visto: true
   }];
@@ -1099,7 +1143,7 @@ function buildPrenotazioniOspedale(dipendenti, stalli, turni) {
         stato: passato ? 'completata' : 'attiva',
         checkIn:  passato ? t.inizio : null,
         checkOut: passato ? t.fine   : null,
-        creataDa: 'dipendente', turnoId: t.id
+        creataDa: 'dipendente', turnoId: t.id, oraInizio: t.inizio, oraFine: t.fine
       });
 
       /* riempimento del turno: quota diversa per turno, cosi' i KPI per turno
@@ -1119,7 +1163,7 @@ function buildPrenotazioniOspedale(dipendenti, stalli, turni) {
           stato: passato ? 'completata' : 'attiva',
           checkIn:  passato ? t.inizio : null,
           checkOut: passato ? t.fine   : null,
-          creataDa: 'dipendente', turnoId: t.id
+          creataDa: 'dipendente', turnoId: t.id, oraInizio: t.inizio, oraFine: t.fine
         });
       }
     });
@@ -1319,7 +1363,7 @@ const S = {
   visitatore:  (id) => AppState.visitatori.find(v => v.id === id) || null,
   accesso:     (id) => AppState.accessi.find(a => a.id === id) || null,
   segnalazione:(id) => AppState.segnalazioni.find(s => s.id === id) || null,
-  dispositivo: (id) => AppState.hardware.find(h => h.id === id) || null,
+  dispositivo: (id) => (AppState.hardware.barriere || []).find(h => h.id === id) || null,
   zona:        (id) => AppState.zone.find(z => z.id === id) || null,
   utenteDemo:  ()   => S.dipendente(AppState.utenti.dipendenteDemoId),
   utentePiattaforma: (id) => AppState.utentiPiattaforma.find(u => u.id === id) || null,
@@ -1817,31 +1861,62 @@ const S = {
   },
 
   kpiHardware() {
-    const h = AppState.hardware;
+    const h = AppState.hardware.barriere || [];
     const anomalie = h.filter(x => x.stato === 'anomalia');
     return {
       online:         h.filter(x => x.stato === 'online').length,
       configurazione: h.filter(x => x.stato === 'in_configurazione').length,
       totale:         h.length,
       anomalie:       anomalie.length,
-      anomaliaNome:   (anomalie[0] || {}).nome || '—',
-      cicli2n:        (h.find(x => x.ruolo === 'principale') || {}).cicli || 0,
+      anomaliaNome:   (anomalie[0] || {}).label || '-',
+      cicli:          h.reduce((s, x) => s + (x.cicli || 0), 0),
       uptime:         '99.8%'
     };
   },
 
-  /** metodi di accesso derivati dall'hardware effettivamente installato */
-  metodiAccesso() {
-    return AppState.hardware
-      .filter(h => TIPI_HW[h.tipo] && TIPI_HW[h.tipo].metodoAccesso)
-      .map(h => ({
-        metodo:      TIPI_HW[h.tipo].metodoAccesso,
-        label:       METODO_ACCESSO[TIPI_HW[h.tipo].metodoAccesso],
-        icona:       TIPI_HW[h.tipo].icona,
-        dispositivo: h.nome,
-        stato:       h.stato
-      }));
+  prenotazioneById: (id) => AppState.prenotazioni.find(p => p.id === id) || null,
+
+  /** Le barriere, con il nome di zona risolto. */
+  barriere() {
+    return (AppState.hardware.barriere || []).map(b =>
+      Object.assign({}, b, { zonaNome: (S.zona(b.zona) || {}).nome || b.zona || '-' }));
   },
+
+  /** Quanto deve fare il dipendente per entrare su questo stallo. */
+  tipoCheckInPerStallo(stalloId) {
+    const m = S.metodoAccessoPerStallo(stalloId);
+    return (TIPI_METODO_ACCESSO[m] || TIPI_METODO_ACCESSO.app).tipoCheckIn;
+  },
+  metodoDef(metodo) { return TIPI_METODO_ACCESSO[metodo] || TIPI_METODO_ACCESSO.app; },
+
+  /** Una riga per zona: metodo, livello di intervento, check-in e check-out. */
+  modalitaAccessoPerZona() {
+    return AppState.zone.map(z => {
+      const m = z.metodoAccesso || 'app';
+      const def = TIPI_METODO_ACCESSO[m] || TIPI_METODO_ACCESSO.app;
+      const liv = LIVELLO_CHECKIN[def.tipoCheckIn];
+      return {
+        zonaId: z.id, zonaNome: z.nome, metodo: m, label: def.label, desc: def.desc,
+        tipoCheckIn: def.tipoCheckIn, badge: liv.badge, colore: liv.colore,
+        checkIn: liv.checkIn,
+        checkOut: 'Manuale da app (fallback sempre disponibile)'
+      };
+    });
+  },
+
+
+  /** metodi di accesso derivati dall'hardware effettivamente installato */
+  /** I metodi effettivamente in uso, dedotti dalle zone configurate. */
+  metodiAccesso() {
+    const visti = {};
+    AppState.zone.forEach(z => {
+      const m = z.metodoAccesso || 'app';
+      if (!visti[m]) visti[m] = { metodo: m, label: (TIPI_METODO_ACCESSO[m] || {}).label || m, zone: [] };
+      visti[m].zone.push(z.id);
+    });
+    return Object.keys(visti).map(k => visti[k]);
+  },
+
 
   /* ---- badge sidebar (derivati, si aggiornano da soli) ---- */
   badges() {
@@ -2094,7 +2169,7 @@ const S = {
         'Stallo':       v.stalloId || '',
         'Data Inizio':  v.data,
         'Data Fine':    v.dataFine || v.data,
-        'Codice My2N':  v.codiceMy2N || '',
+        'Codice di accesso':  v.codiceAccesso || '',
         'Stato':        S.statoVisitatore(v.id),
         'Referente':    v.referenteId ? S.nomePersona(v.referenteId) : ''
       }));
@@ -2462,7 +2537,10 @@ const A = {
       stalloId: spot, stato: 'attiva', checkIn: null, checkOut: null,
       creataDa: creataDa || 'dipendente',
       /* in modalita' giornaliera resta null, come da CODE-17A */
-      turnoId: turnoId || null
+      turnoId: turnoId || null,
+      /* fascia dichiarata: il dipendente puo' anticiparla o posticiparla */
+      oraInizio: (turnoId && S.turno(turnoId)) ? S.turno(turnoId).inizio : '09:00',
+      oraFine:   (turnoId && S.turno(turnoId)) ? S.turno(turnoId).fine   : '18:00'
     };
     AppState.prenotazioni.push(p);
     Store.emit('prenotazioni');
@@ -2487,6 +2565,20 @@ const A = {
       if (acc) { acc.uscita = hhmm(new Date()); acc.stato = 'uscito'; }
     }
     if (!opts || !opts.silent) Store.emit('prenotazioni');
+    return p;
+  },
+
+  /** Anticipa o posticipa inizio e fine di una prenotazione. */
+  modificaOrariPrenotazione({ prenotazioneId, oraInizio, oraFine }) {
+    const p = AppState.prenotazioni.find(x => x.id === prenotazioneId);
+    if (!p) return { errore: 'Prenotazione non trovata' };
+    if (!oraInizio || !oraFine) return { errore: 'Indica ora inizio e ora fine' };
+    if (S.minutiDa(oraFine) <= S.minutiDa(oraInizio)) {
+      return { errore: 'L\'ora di fine deve essere successiva a quella di inizio' };
+    }
+    p.oraInizio = oraInizio;
+    p.oraFine = oraFine;
+    Store.emit('prenotazioni');
     return p;
   },
 
@@ -2593,7 +2685,7 @@ const A = {
       nome, azienda: azienda || '—', email,
       stalloId: spot, data, dataFine: fine, oraInizio: oraInizio || '09:00', oraFine: oraFine || '18:00',
       stato: 'atteso', zonaErrata: false, scaduto: false,
-      codiceMy2N: String(Math.floor(1000 + Math.random() * 9000)),
+      codiceAccesso: String(Math.floor(1000 + Math.random() * 9000)),
       referenteId: referenteId || 'USR-0002',
       creatoIl: OGGI_ISO
     };
@@ -2629,6 +2721,34 @@ const A = {
   },
   estendiPass(id, oraFine) { const v = S.visitatore(id); if (v) { v.oraFine = oraFine || '20:00'; v.scaduto = false; } Store.emit('visitatori'); return v; },
 
+  /** Sposta il periodo di validita' del pass in ENTRAMBE le direzioni.
+      `estendiPass` sapeva solo aggiungere due ore in coda: un visitatore che
+      arriva prima del previsto non aveva modo di essere autorizzato. */
+  aggiornaPeriodoPass(id, { dataInizio, dataFine, oraInizio, oraFine }) {
+    const v = S.visitatore(id);
+    if (!v) return { errore: 'Visitatore non trovato' };
+    const dal = dataInizio || v.data;
+    const al  = dataFine || v.dataFine || v.data;
+    if (al < dal) return { errore: 'La data di fine non pu\u00f2 precedere quella di inizio' };
+    const oi = oraInizio || v.oraInizio;
+    const of = oraFine || v.oraFine;
+    /* Su un pass di un solo giorno la fascia oraria e' un intervallo reale e
+       va validata; su piu' giorni e' la fascia quotidiana, e un "18:00-09:00"
+       sarebbe comunque incoerente: si valida sempre. */
+    if (S.minutiDa(of) <= S.minutiDa(oi)) {
+      return { errore: 'L\'ora di fine deve essere successiva a quella di inizio' };
+    }
+    v.data = dal;
+    v.dataFine = al > dal ? al : null;
+    v.oraInizio = oi;
+    v.oraFine = of;
+    v.scaduto = false;
+    /* lo stato e' derivato: ricalcolarlo evita che resti "scaduto" a video */
+    v.statoCalcolato = S.statoVisitatore(v);
+    Store.emit('visitatori');
+    return v;
+  },
+
   /** modifica un pass esistente (es. riassegnazione dopo "zona errata") */
   mutaVisitatore(id, patch) {
     const v = S.visitatore(id);
@@ -2661,7 +2781,7 @@ const A = {
       dataFine: al < dal ? dal : al,
       stato: 'in_attesa',
       note: (note || '').trim(),
-      codiceMy2N: null,
+      codiceAccesso: null,
       esitoIlTs: null,
       /* `visto` governa il badge di notifica nell'hero: una richiesta appena
          inviata non e' una novita' da segnalare, quindi nasce gia' vista.
@@ -2674,7 +2794,7 @@ const A = {
   },
 
   /** Approva: crea il pass H24 sul range e riporta l'esito SULLA RICHIESTA.
-      Il codice My2N va scritto anche qui, non solo sul visitatore: il
+      Il codice di accesso va scritto anche qui, non solo sul visitatore: il
       dipendente vede la richiesta, non l'anagrafica visitatori. */
   approvaRichiestaPass(richiestaId, note) {
     const r = AppState.richiestePass.find(x => x.id === richiestaId);
@@ -2687,7 +2807,7 @@ const A = {
     });
     Object.assign(r, {
       stato: 'approvata', note: note || '',
-      codiceMy2N: v.codiceMy2N, visitatoreId: v.id,
+      codiceAccesso: v.codiceAccesso, visitatoreId: v.id,
       /* Le date si riscrivono DAL PASS creato, non si danno per scontate:
          se creaPassVisitatore() normalizzasse l'intervallo, la richiesta
          mostrerebbe altrimenti giorni diversi da quelli davvero concessi. */
@@ -2780,6 +2900,32 @@ const A = {
   },
 
   /* ---- HARDWARE ---- */
+  aggiungiBarriera({ tipo, zona, note }) {
+    const n = (AppState.hardware.barriere || []).length + 1;
+    const b = {
+      id: 'BAR-' + String(n).padStart(2, '0'),
+      tipo: tipo || 'sbarra', label: TIPI_BARRIERA[tipo] || TIPI_BARRIERA.sbarra,
+      zona: zona || null, stato: 'online', note: (note || '').trim(),
+      ip: '10.20.0.' + (10 + n), firmware: 'v1.0.0', cicli: 0, ticket: null,
+      ultimoEvento: 'Installata ' + hhmm(new Date()), messaggio: ''
+    };
+    AppState.hardware.barriere.push(b);
+    Store.emit('hardware');
+    return b;
+  },
+  aggiornaBarriera(id, patch) {
+    const b = S.dispositivo(id);
+    if (!b) return null;
+    Object.assign(b, patch);
+    if (patch && patch.tipo) b.label = TIPI_BARRIERA[patch.tipo] || b.label;
+    Store.emit('hardware');
+    return b;
+  },
+  rimuoviBarriera(id) {
+    AppState.hardware.barriere = (AppState.hardware.barriere || []).filter(b => b.id !== id);
+    Store.emit('hardware');
+  },
+
   aggiornaFirmware(hwId) {
     const h = S.dispositivo(hwId);
     if (!h) return null;
@@ -2796,7 +2942,7 @@ const A = {
     Store.emit('hardware');
     return h;
   },
-  setHardwareToggle(chiave, valore) { AppState.config.hardware2n[chiave] = valore; Store.emit('config'); },
+  setHardwareToggle(chiave, valore) { AppState.config.hardware[chiave] = valore; Store.emit('config'); },
 
   /* ---- CONFIG ---- */
   setPolicy(patch) {
@@ -2854,7 +3000,7 @@ const A = {
     const aperto = AppState.accessi.find(a => a.prenotazioneId === p.id && a.uscita === null);
     if (aperto) {
       aperto.ingresso = p.checkIn;
-      aperto.metodo = metodo === 'badge' ? 'badge2n' : S.metodoAccessoPerStallo(p.stalloId);
+      aperto.metodo = metodo || S.metodoAccessoPerStallo(p.stalloId);
       Store.emit('prenotazioni');
       Store.emit('accessi');
       return p;
@@ -2863,7 +3009,7 @@ const A = {
       id: nextId('ACC'), data: p.data, tipo: 'dipendente',
       personaId: p.dipendenteId, personaNome: dip ? dip.nomeCompleto : '\u2014',
       stalloId: p.stalloId, ingresso: p.checkIn, uscita: null,
-      metodo: metodo === 'badge' ? 'badge2n' : S.metodoAccessoPerStallo(p.stalloId),
+      metodo: metodo || S.metodoAccessoPerStallo(p.stalloId),
       stato: 'dentro', anomalia: null, targa: null, prenotazioneId: p.id
     });
     Store.emit('prenotazioni');
@@ -2971,7 +3117,12 @@ const A = {
     const p = Object.assign({}, patch);
     const posti = p.postiTotali;
     delete p.postiTotali;
-    if (p.nome) { p.nomeBreve = p.nome.split('—').pop().trim() || p.nome; p.descrizione = p.nome; }
+    /* Il nome breve si deriva solo se non e' stato indicato: dal CODE-20 il FM
+       puo' impostarlo a mano, e la derivazione non deve sovrascriverlo. */
+    if (p.nome) {
+      if (!p.nomeBreve) p.nomeBreve = p.nome.split('—').pop().trim() || p.nome;
+      p.descrizione = p.nome;
+    }
     Object.assign(AppState.config.sede, p);
     if (posti) A.impostaPostiTotali(parseInt(posti, 10));
     AppState.ui.editSede = false;
@@ -3189,7 +3340,13 @@ function avviaTimer() {
     });
   }, 300000);
 
-  /* 3. lo stato dei pass e' derivato: basta ridisegnare quando cambia giorno
+  /* 3. contatore live: si ridisegna solo se c'e' davvero qualcuno dentro,
+        altrimenti sarebbe un re-render al minuto a vuoto per tutta la demo */
+  setInterval(() => {
+    if (AppState.prenotazioni.some(p => p.checkInTs && !p.checkOutTs)) Store.emit('prenotazioni');
+  }, 60000);
+
+  /* 4. lo stato dei pass e' derivato: basta ridisegnare quando cambia giorno
         o fascia, senza toccare i dati */
   setInterval(() => {
     const cambiati = AppState.visitatori.some(v => v.statoCalcolato !== S.statoVisitatore(v));
@@ -3212,6 +3369,6 @@ global.PC.Utils = {
   iniziali, nextId, rInt, toCSV,
   isLavorativo, giorniLavorativi
 };
-global.PC.Domini = { TIPO_STALLO, DISPONIBILITA, STATO_STALLO, METODO_ACCESSO, METODI_ZONA, TIPO_SEGNALAZIONE, DIPARTIMENTI, RUOLI, PERMISSIONS, STATO_ACCOUNT, TIPI_HW };
+global.PC.Domini = { TIPO_STALLO, DISPONIBILITA, STATO_STALLO, METODO_ACCESSO, METODI_ZONA, TIPI_METODO_ACCESSO, LIVELLO_CHECKIN, TIPI_BARRIERA, TIPO_SEGNALAZIONE, DIPARTIMENTI, RUOLI, PERMISSIONS, STATO_ACCOUNT, TIPI_HW };
 
 })(window);

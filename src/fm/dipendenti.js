@@ -171,7 +171,7 @@ UI.on('invia-dip-pass', d => {
   const codice = Modals.form.codice;          // va letto PRIMA della close(), che azzera il form
   const dip = S.dipendente(d.dipendenteId);
   Modals.close();
-  UI.toast(`🔑 Codice My2N ${codice} inviato a ${dip.nomeCompleto}`);
+  UI.toast(`🔑 Codice accesso ${codice} inviato a ${dip.nomeCompleto}`);
 });
 
 })(window);

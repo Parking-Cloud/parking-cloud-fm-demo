@@ -1,5 +1,5 @@
 /* ============================================================================
-   FM · Visitatori — pass temporanei My2N
+   FM · Visitatori — pass temporanei
    Un pass creato compare subito in lista, occupa uno stallo di Zona V e si
    vede nella mappa: nessun dato duplicato. [copre anche DV10]
 ============================================================================ */
@@ -91,10 +91,10 @@ UI.on('crea-visitatore', () => {
     nome: (fm.nome || 'Visitatore').trim(), azienda: fm.azienda, email: fm.email.trim(),
     dataISO: fm.data, oraInizio: fm.da, oraFine: fm.a, referenteId: fm.referente
   });
-  if (fm.codice) v.codiceMy2N = fm.codice;
+  if (fm.codice) v.codiceAccesso = fm.codice;
   Modals.close();
   A.vaiA('visitatori');
-  UI.toast(`✓ Pass ${v.passId} creato · codice My2N ${v.codiceMy2N} inviato a ${v.email}`);
+  UI.toast(`✓ Pass ${v.passId} creato · codice ${v.codiceAccesso} inviato a ${v.email}`);
 });
 
 UI.on('vis-arrivato', d => {
@@ -104,6 +104,19 @@ UI.on('vis-arrivato', d => {
 UI.on('vis-uscito', d => {
   const v = A.segnaVisitatoreUscito(d.visitatoreId);
   UI.toast(`\u23f9 ${v.nome} segnalato come uscito`);
+});
+
+UI.on('aggiorna-periodo-pass', d => {
+  Modals._collect();
+  const fm = Modals.form;
+  const r = A.aggiornaPeriodoPass(d.visitatoreId, {
+    dataInizio: fm.dataInizio, dataFine: fm.dataFine,
+    oraInizio: fm.oraInizio, oraFine: fm.oraFine
+  });
+  if (r && r.errore) { UI.toast('\u26a0 ' + r.errore); return; }
+  const gg = Math.round((U.fromISO(r.dataFine || r.data) - U.fromISO(r.data)) / 86400000) + 1;
+  UI.toast(`\u{1F553} ${r.nome}: periodo aggiornato \u00b7 ${U.fmtDM(U.fromISO(r.data))}` +
+    (gg > 1 ? ` \u2013 ${U.fmtDM(U.fromISO(r.dataFine))}` : '') + ` \u00b7 ${r.oraInizio}\u2013${r.oraFine}`);
 });
 
 UI.on('revoca-pass', d => {

@@ -1,6 +1,6 @@
 # CHANGELOG — Parking Cloud Demo
 
-Stato del progetto al **18/08/2026**.
+Stato del progetto al **19/08/2026**.
 
 ---
 
@@ -17,20 +17,21 @@ Stato del progetto al **18/08/2026**.
 | Analytics | `fm/analytics.js` | ✅ KPI con delta, grafici CSS, top-5 stalli, confronto periodi |
 | Segnalazioni | `fm/segnalazioni.js` | ✅ attive/risolte, utenti bloccati, sblocco |
 | Dipendenti | `fm/dipendenti.js` | ✅ 312 anagrafiche, ricerca reale, import CSV simulato |
-| Visitatori | `fm/visitatori.js` | ✅ pass My2N, revoca, estensione, zona errata |
-| Hardware | `fm/hardware.js` | ✅ 6 dispositivi, 6 tipi, metodi accesso derivati |
+| Visitatori | `fm/visitatori.js` | ✅ pass temporanei, revoca, periodo bidirezionale, zona errata |
+| Hardware | `fm/hardware.js` | ✅ barriere + modalità di accesso per zona, 3 livelli di intervento |
 | Policy & Config | `fm/config.js` | ✅ 4 tab interne |
 | Amministrazione | `fm/amministrazione.js` | ✅ solo Admin — utenti piattaforma + parcheggi, modifica sede con conferma sulle riduzioni, ripristino dati demo |
 | Vista Dipendente | `employee/index.js` | ✅ calendario, mappa read-only, prenotazioni |
 
-### Modali registrati — 28 su 28
+### Modali registrati — 34 su 34
 
 `stallo-det` · `acc-det` · `dip-det` · `add-user` · `sblocco` · `dip-pass` ·
 `req-pass` · `add-vis` · `vis-det` · `seg` · `hw` · `add-stallo` · `add-bk` ·
 `policy` · `export` · `daterange` · `emp-book` · `emp-cancel` · `emp-segnala` ·
 `emp-profile` · `emp-history` · `add-platform-user` · `platform-user-det` ·
 `import-dipendenti` · `dip-creato` · `conferma-riduzione` · `conferma-ripristino` ·
-`emp-richiedi-pass`
+`emp-richiedi-pass` · `emp-mostra-prenotazione` · `seg-collegata` ·
+`lista-attesa` · `emp-sel-turno` · `add-barriera` · `emp-prenot-det`
 
 Tutti ricevono il contesto dall'elemento cliccato e leggono da `AppState`
 all'apertura: nessun contenuto statico.
@@ -51,8 +52,8 @@ Il ruolo si deduce dall'account: nessuna selezione al login.
 Accesso **invite-only**, nessuna registrazione pubblica; l'attivazione avviene
 da `view-activate` (simulata dai pulsanti "Simula attivazione").
 
-L'unica differenza visibile fra Admin e FM è il badge nel footer sidebar e la
-voce "Amministrazione" (11 voci sidebar vs 10).
+L'unica differenza visibile fra Admin e FM è il badge nel topbar (dal CODE-19)
+e la voce "Amministrazione".
 
 ### Dati demo
 
@@ -67,6 +68,124 @@ Generati da PRNG con seed fisso `20260817`: **stabili a ogni reload**.
 ---
 
 ## STORICO MODIFICHE
+
+## [19/08/2026] — CODE-20 · Sede modificabile, barriere vs metodi, check-in per livello
+> Il blocco più strutturale dal CODE-18: separa due cose che erano una sola.
+> La **barriera** è l'ostacolo fisico, il **metodo di accesso** è come lo si
+> supera e appartiene alla zona. Finché erano lo stesso oggetto non si poteva
+> descrivere un cancello superabile in due modi, né una zona senza barriere ma
+> con controllo accessi.
+
+### MODIFICA A — nome sede modificabile dal FM
+- `fm/config.js` → tab Parcheggio: card **"🏢 Informazioni sede"** con Nome
+  sede, Nome breve e Indirizzo, in cima alla tab.
+- `state.js → aggiornaSede()`: il nome breve si deriva dal nome **solo se non
+  è stato indicato**. Prima la derivazione sovrascriveva sempre, quindi il
+  campo "Nome breve" sarebbe stato inerte.
+
+### MODIFICA B — rimozione dei riferimenti vendor
+- Nessuna occorrenza di **2N / My2N / 1Control** in tutta la UI (verificato
+  sulle 11 sezioni renderizzate).
+- Chip `2N Online` nel topbar: **rimosso**. Il conteggio barriere resta nel
+  sottotitolo della sidebar (`2/3 barriere online`).
+- Sidebar e tab orizzontale: `⚡ 2N` → **`⚡ Hardware`**.
+- Metodo storico `badge2n` → `badge`; `config.hardware2n` → `config.hardware`;
+  `codiceMy2N` → `codiceAccesso`; colonna export `Codice My2N` → `Codice di accesso`.
+
+### MODIFICA C — Hardware ridisegnato in due blocchi
+- `state.js`: `AppState.hardware` da array di dispositivi a
+  **`{ barriere: [...] }`** — `{ id, tipo, label, zona, stato, note }` più i
+  campi operativi (`ip`, `firmware`, `cicli`, `ticket`, `ultimoEvento`,
+  `messaggio`) che tengono in vita il flusso firmware/ticket.
+- Nuovo dominio **`TIPI_BARRIERA`** (sbarra, cancello, pilomat, tornello,
+  porta, libero). Seed: BAR-01 cancello/B/online, BAR-02 sbarra/A/online,
+  BAR-03 pilomat/V/**anomalia**.
+- Nuovo dominio **`TIPI_METODO_ACCESSO`**: 11 metodi con `tipoCheckIn`
+  (`zero` | `azione` | `manuale`) e descrizione, più `LIVELLO_CHECKIN`.
+  `METODI_ZONA` è ora l'elenco completo: ogni metodo è configurabile.
+- `fm/hardware.js` riscritto: **CARD 1 Barriere** (Tipo | Zona | Stato | Note |
+  Azioni, con `+ Aggiungi barriera`) e **CARD 2 Modalità di accesso per zona**
+  (Zona | Metodo | Livello intervento | Check-in | Check-out).
+- Nuovo modale **`add-barriera`**; `hw` riscritto sulle barriere, con la riga
+  "Come si supera" letta dalla zona — non dalla barriera.
+- **`ZONE_SEED` diversificato**: A `targa`, B `pin`, C `bluetooth`, V `pin`,
+  EV `qr`, H `guardiano`. Con un seed tutto `app` la colonna "Livello
+  intervento" avrebbe mostrato sempre "Manuale" e la differenza fra ANPR e
+  keypad — che è il punto della demo — non si sarebbe mai vista.
+
+### MODIFICA D — check-in modellato sul livello di intervento
+- `employee/index.js`: nuovo blocco `bloccoCheckIn(p)` (esportato su
+  `PC.EmpUI`, lo riusa il modale di dettaglio).
+- **Livello 0** (`targa`): "rilevato automaticamente dalla telecamera" +
+  fallback manuale piccolo. **Livello 1** (`qr`/`bluetooth`/`badge`):
+  "✓ Ho effettuato l'accesso" come azione principale; con `qr` compare il
+  codice prenotazione. **Livello 2**: "▶ Check-in" prominente; con `guardiano`
+  anche "📋 Mostra prenotazione al guardiano", con `pin` "✓ Confermo accesso
+  con PIN".
+- Il fallback manuale resta a **ogni** livello: se il varco non legge, il
+  dipendente deve poter chiudere il cerchio.
+- Dopo il check-in la UI è identica per tutti i metodi: badge "Dentro · dalle
+  HH:MM", timer live e "⏹ Check-out".
+- `avviaTimer()`: nuovo intervallo che ridisegna al minuto **solo se c'è
+  davvero qualcuno dentro**.
+
+### MODIFICA E — il giorno in corso si distingue
+- Badge **"OGGI"**, bordo 3px blu se prenotato, sfondo verde e timer nella card
+  se il check-in è attivo.
+- Nuovo modale **`emp-prenot-det`**: stato, check-in/out (stesso blocco della
+  card, così non divergono), spostamento orari, cancellazione.
+- Un giorno già prenotato apre il **dettaglio**, non di nuovo la prenotazione.
+
+### MODIFICA F — estensione bidirezionale
+- `state.js`: `modificaOrariPrenotazione({prenotazioneId, oraInizio, oraFine})`
+  e `aggiornaPeriodoPass(id, {dataInizio, dataFine, oraInizio, oraFine})`.
+  `estendiPass` sapeva solo aggiungere due ore in coda: un visitatore in
+  anticipo non poteva essere autorizzato.
+- Ogni prenotazione ha ora `oraInizio`/`oraFine` (dai turni nello scenario
+  ospedale, 09:00–18:00 altrove).
+- `vis-det`: Data/Ora inizio e fine modificabili + "Aggiorna periodo".
+- `add-bk`: campi ora inizio/fine nella creazione FM.
+
+### Fix
+- **`\U0001XXXX` non è un escape JavaScript.** Quattro occorrenze rendevano
+  `U0001F4CB Mostra prenotazione` invece dell'emoji — tre erano **preesistenti**
+  (titoli di `seg-collegata`, `emp-mostra-prenotazione` e logo del pass, da
+  CODE-19b). Sostituite con il carattere letterale.
+- **Regressione introdotta e corretta durante il blocco:** con il dettaglio che
+  intercetta il click, un giorno già prenotato non era più convertibile in
+  Smart Working senza prima cancellarlo. Aggiunto **"Modifica giorno"** nel
+  footer di `emp-prenot-det`, che riapre `emp-book`.
+
+### Flussi verificati
+- **TEST A** — checklist completa di regressione: 11 sezioni renderizzate senza
+  errori JS, modali con i dati dell'entità cliccata, filtri Accessi (20 → 3 →
+  20 con "✕ Azzera"), paginazione Accessi/Dipendenti/Prenotazioni, navigazione
+  settimane, ricerca dipendenti, config 4 tab, zone +1/−1, coerenza
+  dipendente → FM (prenotazione, Smart Working, segnalazione)
+- **TEST B** — nome sede: state, topbar e sidebar aggiornati insieme
+- **TEST C** — zero occorrenze vendor sulle 11 sezioni; chip rimosso;
+  `⚡ Hardware` in sidebar e tab
+- **TEST D** — due card, badge Automatico/Azione rapida/Manuale, BAR-03 in
+  anomalia, nota sul check-out, crea e rimuovi barriera, firmware v1.4.6 → v1.4.7
+- **TEST E** — tutti e quattro i livelli verificati sullo stesso dipendente
+  spostandolo di zona (A-09 targa, C-05 bluetooth, EV-02 qr con codice, B-05
+  pin, H-02 guardiano); dopo il check-in timer e Check-out per ogni metodo;
+  metodo registrato = metodo della zona, anche sull'accesso in `AppState`
+- **TEST F** — badge OGGI, `day-today-booked`, dettaglio con le 4 sezioni
+- **TEST G** — dipendente 09:00–18:00 → 08:00–19:30; fine ≤ inizio rifiutata;
+  pass visitatore anticipato al giorno prima con ora 07:30; data fine < inizio
+  rifiutata; prenotazione FM creata con fascia 07:00–15:30
+
+### Flussi NON verificati (da controllare manualmente)
+- Resa **visiva** delle nuove card check-in nella colonna azioni della lista
+  prenotazioni dipendente su schermi stretti (il blocco è più alto dei tre
+  pulsanti che ha sostituito)
+- Scenario **ospedale** con i nuovi metodi di zona: i turni sono stati
+  verificati in CODE-17, ma non è stato ri-eseguito l'intero giro con la
+  tassonomia nuova
+- Download reale del file `.xlsx` (SheetJS da CDN, non verificabile headless)
+
+---
 
 ## [19/08/2026] — CODE-19b · Collegamento UI della MODIFICA E
 > Nessuna logica nuova: `state.js` era gia' corretto. Mancava il **click** che

@@ -139,7 +139,7 @@ const NAV = [
     { id: 'visitatori',   ico: '🪪', label: 'Visitatori', perm: 'visitatori' }
   ]},
   { gruppo: 'Sistema',      voci: [
-    { id: 'hardware',     ico: '⚡', label: 'Hardware · 2N', perm: 'hardware' },
+    { id: 'hardware',     ico: '⚡', label: 'Hardware', perm: 'hardware' },
     { id: 'config',       ico: '⚙',  label: 'Policy & Config', perm: 'config' },
     { id: 'export',       ico: '⤓',  label: 'Esporta Report', modale: 'export' },
     /* visibile solo se PERMISSIONS[ruolo].amministrazione === true */
@@ -156,7 +156,7 @@ const TABS = [
   ['prenotazioni', '📅 Prenotazioni'], ['segnalazioni', '🚨 Segnalazioni'],
   ['analytics', '📊 Analytics'],
   ['dipendenti', '👥 Dipendenti'], ['visitatori', '🪪 Visitatori'],
-  ['hardware', '⚡ 2N'], ['config', '⚙ Config'],
+  ['hardware', '⚡ Hardware'], ['config', '⚙ Config'],
   ['amministrazione', '⚙ Amministrazione']   // filtrata dai permessi: solo Admin
 ];
 
@@ -179,7 +179,7 @@ function renderSidebar() {
       <div class="sb-sub">${isAdmin ? 'Console Amministrazione' : 'Facility Manager Console'}</div>
       <div class="sb-client"><div class="live"></div>
         <div><div style="font-weight:700;font-size:11.5px">${UI.esc(sede.nomeBreve)}</div>
-        <div style="font-size:9.5px;opacity:.6">${kpi.totale} posti · 2N ${hw.online}/${hw.totale} online</div></div>
+        <div style="font-size:9.5px;opacity:.6">${kpi.totale} posti · ${hw.online}/${hw.totale} barriere online</div></div>
       </div>
     </div>
     <nav class="sb-nav">
@@ -219,14 +219,9 @@ function renderIdentita(utente, ruolo, isAdmin) {
 /* ---- TOPBAR ---- */
 function renderTopbar() {
   const sede = State.config.sede;
-  const hw = S.kpiHardware();
-  const okHw = hw.anomalie === 0;
   UI.mount('#fm-topbar', `
     <div class="topbar-title"><span class="pc-parking pc-parking-dark">parking</span><span class="pc-cloud pc-cloud-dark">CLOUD</span> <small>${UI.esc(sede.descrizione)} · ${S.kpiStalli().totale} posti</small></div>
     <div style="display:flex;gap:7px;align-items:center">
-      <div class="hw-chip"${UI.act('nav', { sezione: 'hardware' })} title="${okHw ? 'Tutti i dispositivi online' : hw.anomaliaNome + ' in anomalia'}">
-        <span class="dot dot-${okHw ? 'ok' : 'warn'}"></span>2N ${okHw ? 'Online' : hw.online + '/' + hw.totale}
-      </div>
       ${UI.btn('📅 ' + UI.esc(State.config.periodo.label), { azione: 'apri-modale', params: { modale: 'daterange' }, sm: false, stile: 'font-size:12px;padding:7px 12px' })}
       ${UI.btn('⤓', { azione: 'apri-modale', params: { modale: 'export' }, sm: false, stile: 'padding:7px 10px' })}
       ${UI.btn('🪪 + Pass Visitatore', { azione: 'apri-modale', params: { modale: 'add-vis' }, variante: 'btn-cyan' })}

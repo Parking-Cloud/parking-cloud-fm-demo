@@ -143,6 +143,15 @@ UI.on('crea-prenotazione-fm', () => {
     tipo: fm.tipo || 'ufficio', stalloId: fm.stallo || null, creataDa: 'fm'
   });
   if (r.errore) { UI.toast('⚠ ' + r.errore); return; }
+  /* La fascia si applica DOPO: `prenota` scrive gli orari standard, e qui si
+     sovrascrivono solo se il FM li ha davvero toccati. Se sono incoerenti la
+     prenotazione resta valida con la fascia di default. */
+  if (r.tipo === 'ufficio' && (fm.oraInizio || fm.oraFine)) {
+    const esito = A.modificaOrariPrenotazione({
+      prenotazioneId: r.id, oraInizio: fm.oraInizio, oraFine: fm.oraFine
+    });
+    if (esito && esito.errore) UI.toast('⚠ ' + esito.errore + ' · orari standard applicati');
+  }
   Modals.close();
   const dip = S.dipendente(fm.dipendente);
   UI.toast(r.tipo === 'sw'

@@ -37,6 +37,11 @@ stato incoerente. È l'origine di CODE-03.
 | `utentiPiattaforma` | `trovaAccountPerEmail`, `utenteCorrente`, `facilityManager`, F12 |
 | `PERMISSIONS` | sidebar e tab in `index.html`, `Sezioni.*`, F12 |
 | identita' sessione | `dipendenteCorrente()` in tutte le viste `emp-*` — mai `utenteDemo()`, F15, F16 |
+| `hardware` (forma) | `barriere()`, `kpiHardware`, `dispositivo()`, `fm/hardware.js`, modale `hw`, sottotitolo sidebar. **Non e' piu' un array** — F31 |
+| `TIPI_METODO_ACCESSO` | `METODI_ZONA` (select in Config), `modalitaAccessoPerZona`, `tipoCheckInPerStallo`, `bloccoCheckIn()`, colonna Metodo in Accessi e Dipendenti — F31, F32 |
+| `zone[].metodoAccesso` | `metodoAccessoPerStallo`, `metodoAccessoPerDipendente`, `origineMetodoAccesso`, CARD 2 in Hardware, la UI di check-in del dipendente — F26, F31, F32 |
+| `prenotazioni.oraInizio/oraFine` | `modificaOrariPrenotazione`, `emp-prenot-det`, `add-bk`, seed uffici e ospedale (turni) — F33 |
+| `config.sede` | topbar, sidebar, export, card in Config, modale sede in Amministrazione — F34 |
 | `config.periodo` | `kpiAccessi`, `kpiVisitatori`, `kpiPrenotazioni`, `kpiSegnalazioni`, `accessiFiltrati`, `badges` (deve restare su OGGI), F14 |
 
 ---
@@ -447,6 +452,83 @@ stato incoerente. È l'origine di CODE-03.
   - L'export legge lo stato dal selector, non dal campo grezzo.
 - **Verifica:** futuro -> atteso; oggi -> atteso/dentro; passato -> scaduto;
   revocato e uscito restano tali
+
+## F31 — Barriere e metodi di accesso sono due cose diverse (CODE-20)
+
+- **Sorgente:** `state.js -> buildHardware()`, `TIPI_BARRIERA`,
+  `TIPI_METODO_ACCESSO`, `LIVELLO_CHECKIN`; `fm/hardware.js`;
+  `modals.js -> hw`, `add-barriera`
+- **Selectors:** `barriere()`, `modalitaAccessoPerZona()`, `metodoDef()`,
+  `tipoCheckInPerStallo()`, `kpiHardware()`
+- **Actions:** `aggiungiBarriera`, `aggiornaBarriera`, `rimuoviBarriera`
+- **Da sapere:**
+  - `AppState.hardware` **non e' piu' un array**: e' `{ barriere: [...] }`.
+    Chi scrive `State.hardware.map(...)` rompe la sezione a runtime.
+  - Il **metodo di accesso vive sulla zona**, non sulla barriera. Il modale `hw`
+    lo legge da `modalitaAccessoPerZona()` filtrando su `zonaId`: se lo si
+    copiasse sulla barriera si otterrebbero due fonti di verita' in disaccordo.
+  - `METODI_ZONA` e' `Object.keys(TIPI_METODO_ACCESSO)`: aggiungere un metodo
+    lo rende **automaticamente** selezionabile in Config. Ma ogni metodo nuovo
+    deve dichiarare `tipoCheckIn`, altrimenti `bloccoCheckIn()` cade sul
+    default `app`.
+  - Il seed delle zone copre **tutti e tre i livelli** di proposito. Riportarle
+    tutte ad `app` fa sparire i badge "Automatico" e "Azione rapida" dalla UI.
+- **Verifica:** due card in Hardware; BAR-03 in anomalia; crea barriera →
+  compare in tabella; rimuovi → sparisce; il modale mostra "Come si supera"
+  con il metodo della zona protetta
+
+## F32 — Check-in per livello di intervento (CODE-20)
+
+- **Sorgente:** `employee/index.js -> bloccoCheckIn()` (esportato su
+  `PC.EmpUI`), `modals.js -> emp-prenot-det`
+- **Da sapere:**
+  - Il blocco e' **uno solo**, usato sia nella card della prenotazione sia nel
+    modale di dettaglio. Duplicarlo li farebbe divergere alla prima modifica.
+  - `bloccoCheckIn` guarda `tipoCheckIn`, **non** il metodo: aggiungere un
+    metodo allo stesso livello non richiede di toccare la funzione.
+  - Il **fallback manuale** (`metodo: 'app'`) resta a ogni livello. E' l'unica
+    via d'uscita quando il varco non legge.
+  - Dopo il check-in la UI e' identica per tutti i livelli. La differenza vive
+    solo nel *prima*.
+  - `registraCheckIn(id, metodo)` scrive `metodo || metodoAccessoPerStallo()`
+    sull'accesso: passare `'app'` per il fallback **sovrascrive** il metodo di
+    zona nel log, ed e' voluto (registra cio' che e' successo davvero).
+- **Verifica:** stesso dipendente spostato su A-09 / C-05 / EV-02 / B-05 /
+  H-02 → `chk-auto`, `chk-azione` (+codice QR), `chk-manuale` (+PIN o
+  +guardiano); dopo il check-in timer e "⏹ Check-out" ovunque
+
+## F33 — Orari di una prenotazione e periodo di un pass (CODE-20)
+
+- **Sorgente:** `state.js -> modificaOrariPrenotazione()`,
+  `aggiornaPeriodoPass()`; `modals.js -> emp-prenot-det`, `vis-det`, `add-bk`
+- **Da sapere:**
+  - Ogni prenotazione ha `oraInizio`/`oraFine`. Nello scenario ospedale sono
+    gli estremi del **turno**: chi crea prenotazioni a turni deve copiarli, o
+    la fascia mostrata contraddice il turno.
+  - La validazione e' `fine > inizio` in minuti (`S.minutiDa`), non confronto
+    fra stringhe.
+  - `aggiornaPeriodoPass` azzera `scaduto` e **ricalcola** `statoCalcolato`:
+    senza, un pass appena prolungato resterebbe "scaduto" a video fino al
+    prossimo giro di timer.
+  - `dataFine` resta `null` quando coincide con `data` — e' la convenzione che
+    `statoStallo` usa per il range. Scriverci lo stesso giorno non rompe, ma
+    sporca l'export.
+  - In `add-bk` la fascia si applica **dopo** `prenota()`: se e' incoerente la
+    prenotazione resta valida con gli orari standard e il FM riceve un avviso.
+- **Verifica:** 09:00–18:00 → 08:00–19:30; 20:00–19:00 rifiutato; pass
+  anticipato al giorno prima; data fine < inizio rifiutata
+
+## F34 — Nome sede modificabile dal FM (CODE-20)
+
+- **Sorgente:** `fm/config.js` tab Parcheggio, `state.js -> aggiornaSede()`
+- **Da sapere:**
+  - `aggiornaSede` deriva `nomeBreve` dal nome **solo se non e' passato**.
+    Se si ripristina la derivazione incondizionata, il campo "Nome breve"
+    diventa inerte senza errori — il sintomo e' silenzioso.
+  - `descrizione` segue sempre il nome: e' quello che compare nel topbar.
+  - La stessa action e' usata da Amministrazione con `postiTotali`, che passa
+    per `impostaPostiTotali()` e puo' far scattare la conferma di riduzione.
+- **Verifica:** salva → topbar, sidebar ed export cambiano insieme
 
 ## F12 — Login Admin → accesso Amministrazione
 

@@ -845,6 +845,39 @@ input[type=range]{accent-color:var(--blue)}
 .seg-link:hover{text-decoration:underline}
 .seg-detail .seg-link{display:inline-block;margin-top:4px;font-size:11px}
 
+/* ---- Check-in per livello di intervento (CODE-20 D) ---- */
+.chk-box{display:flex;flex-direction:column;gap:8px;align-items:flex-start;
+  padding:10px 12px;border:1px solid var(--border);border-radius:10px;
+  background:#FAFBFD;min-width:230px}
+.chk-box .btn{width:100%;justify-content:center}
+.chk-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.chk-lead{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:700}
+.chk-text{font-size:11.5px;color:var(--text-muted);line-height:1.55}
+.chk-hint{font-size:11px;color:var(--text-muted)}
+.chk-auto{border-left:3px solid var(--green)}
+.chk-azione{border-left:3px solid var(--cyan)}
+.chk-manuale{border-left:3px solid var(--amber)}
+.chk-in{border-left:3px solid var(--green);background:var(--green-bg)}
+.chk-done{border-left:3px solid var(--border)}
+.chk-cta{display:flex;flex-direction:column;gap:6px;width:100%}
+.chk-qr{width:100%;text-align:center;padding:9px;border:1px dashed var(--border);
+  border-radius:8px}
+.chk-qr-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted)}
+.chk-qr-code{font-family:'DM Mono',monospace;font-size:17px;font-weight:800;letter-spacing:2px;margin:4px 0}
+.chk-qr-hint{font-size:10.5px;color:var(--text-muted)}
+
+/* ---- "Oggi" davvero visibile (CODE-20 E) ---- */
+.day-oggi-badge{position:absolute;top:6px;right:6px;font-size:9px;font-weight:800;
+  letter-spacing:.6px;padding:2px 6px;border-radius:20px;
+  background:var(--blue);color:#fff}
+.emp-day.day-today-booked{border-width:3px;border-color:var(--blue)}
+.emp-day.day-dentro{background:var(--green-bg)}
+.my-booking-card.mbc-dentro{background:var(--green-bg)}
+.day-timer{font-family:'DM Mono',monospace;font-size:11px;font-weight:700;color:var(--green);margin-top:4px}
+.my-booking-card.mbc-oggi{border-width:3px;border-color:var(--blue)}
+.modal-sec-tit{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;
+  color:var(--text-muted);margin:16px 0 8px;padding-top:12px;border-top:1px solid var(--border)}
+
 </style>
 </head>
 <body>
@@ -1125,16 +1158,61 @@ const STATO_STALLO = {
   bloccato:     { label: 'Bloccato',             cls: 'ms-maint' }
 };
 
-const METODO_ACCESSO = {
-  app:       'App mobile',
-  pin:       'PIN Keypad',
-  qr:        'QR Code',
-  bluetooth: 'Bluetooth',
-  targa:     'ANPR (targa)',
-  badge2n:   'Badge 2N',
-  app2n:     'App + 2N',
-  pass:      'Pass temporaneo',
-  nd:        '–'
+/* I metodi di accesso, classificati per QUANTO deve fare il dipendente.
+   E' la distinzione che conta in fase di vendita: "quanto e' comodo entrare",
+   non quale marca di hardware c'e' sul cancello.
+     zero    -> non fa nulla, il varco lo riconosce
+     azione  -> un gesto rapido (avvicina, scansiona), nessun dato da digitare
+     manuale -> deve digitare, mostrare qualcosa o farsi aprire
+   Il check-out manuale dall'app resta SEMPRE disponibile come fallback,
+   qualunque sia il metodo di ingresso. */
+const TIPI_METODO_ACCESSO = {
+  targa:       { label: 'ANPR (riconoscimento targa)', tipoCheckIn: 'zero',
+                 desc: 'Accesso rilevato automaticamente dalla telecamera. Nessuna azione richiesta dal dipendente.' },
+  qr:          { label: 'QR Code (scansione app)',     tipoCheckIn: 'azione',
+                 desc: 'Il dipendente inquadra il QR con l\'app.' },
+  bluetooth:   { label: 'Bluetooth (avvicina app)',    tipoCheckIn: 'azione',
+                 desc: 'Il varco si apre avvicinando lo smartphone.' },
+  badge:       { label: 'Badge / RFID',                tipoCheckIn: 'azione',
+                 desc: 'Il dipendente avvicina il badge al lettore.' },
+  pin:         { label: 'PIN Keypad',                  tipoCheckIn: 'manuale',
+                 desc: 'Il dipendente digita il PIN sul tastierino.' },
+  guardiano:   { label: 'Guardiano (con ricevuta)',    tipoCheckIn: 'manuale',
+                 desc: 'Accesso autorizzato dal personale in guardiola.' },
+  telecomando: { label: 'Telecomando',                 tipoCheckIn: 'manuale',
+                 desc: 'Apertura con telecomando personale.' },
+  locker:      { label: 'Locker (codice/chiave)',      tipoCheckIn: 'manuale',
+                 desc: 'Ritiro chiave o codice da armadietto.' },
+  prossimita:  { label: 'Sensore prossimità',          tipoCheckIn: 'manuale',
+                 desc: 'Rilevazione a corto raggio con conferma.' },
+  libero:      { label: 'Libero (senza controllo)',    tipoCheckIn: 'manuale',
+                 desc: 'Nessun varco: accesso libero.' },
+  app:         { label: 'App mobile',                  tipoCheckIn: 'manuale',
+                 desc: 'Apertura dall\'app del dipendente.' }
+};
+/* Il check-out non dipende dal metodo: e' sempre manuale dall'app finche'
+   l'integrazione hardware non lo automatizza. */
+const CHECKOUT_MANUALE_SEMPRE = true;
+
+/* Mappa di sole etichette: molte viste vogliono solo la stringa. */
+const METODO_ACCESSO = Object.keys(TIPI_METODO_ACCESSO)
+  .reduce((o, k) => { o[k] = TIPI_METODO_ACCESSO[k].label; return o; },
+          { pass: 'Pass temporaneo', nd: '–' });
+
+const LIVELLO_CHECKIN = {
+  zero:    { badge: 'Automatico',    colore: 'green', checkIn: 'Automatico (telecamera)' },
+  azione:  { badge: 'Azione rapida', colore: 'blue',  checkIn: 'Azione dipendente (app/badge)' },
+  manuale: { badge: 'Manuale',       colore: 'amber', checkIn: 'Manuale (da app)' }
+};
+
+/* Barriere fisiche: cosa c'e' all'ingresso, indipendentemente da come si apre. */
+const TIPI_BARRIERA = {
+  sbarra:   'Sbarra automatica',
+  cancello: 'Cancello',
+  pilomat:  'Pilomat',
+  tornello: 'Tornello',
+  porta:    'Porta elettrica',
+  libero:   'Libero / senza barriere'
 };
 
 const TIPO_SEGNALAZIONE = {
@@ -1148,8 +1226,8 @@ const TIPO_SEGNALAZIONE = {
 
 /* Dispositivi supportati: in produzione + integrazioni in roadmap */
 const TIPI_HW = {
-  tastierino2n: { label: 'Tastierino 2N',        icona: '🔢', metodoAccesso: 'pin'       },
-  bluetooth:    { label: 'Bluetooth / 1Control', icona: '📶', metodoAccesso: 'bluetooth' },
+  tastierino2n: { label: 'Tastierino a codice', icona: '🔢', metodoAccesso: 'pin'       },
+  bluetooth:    { label: 'Lettore Bluetooth',   icona: '📶', metodoAccesso: 'bluetooth' },
   anpr:         { label: 'Telecamera ANPR',      icona: '📷', metodoAccesso: 'targa'     },
   qrreader:     { label: 'Lettore QR Code',      icona: '📱', metodoAccesso: 'qr'        },
   sbarra:       { label: 'Sbarra automatica',    icona: '🚧', metodoAccesso: null        },
@@ -1217,20 +1295,24 @@ const SEDE = {
    Incoerenza risolta portando la Zona A a 42 → totale esattamente 156.
    Il KPI "Posti Totali" è comunque derivato da stalli.length.            */
 /* Il metodo di accesso e' un attributo della ZONA, non della persona:
-   dipende dal varco fisico installato li'. Zona B ha il cancello 2N (PIN),
+   dipende dal varco fisico installato li'. Zona B ha il cancello con tastierino,
    la EV il lettore QR, e cosi' via. */
+/* I metodi di zona coprono di proposito tutti e tre i livelli di intervento:
+   con un seed tutto 'app' la colonna "Livello intervento" mostrerebbe sempre
+   "Manuale" e la differenza fra ANPR e keypad — che e' il punto della demo —
+   non si vedrebbe mai. */
 const ZONE_SEED = [
-  { id: 'A',  nome: 'Zona A — Piano -1',        piano: 'Piano -1', posti: 42, tipoDefault: 'standard',   colore: 'gold',   metodoAccesso: 'app', note: '' },
-  { id: 'B',  nome: 'Zona B — Piano -1 (2N)',   piano: 'Piano -1', posti: 48, tipoDefault: 'standard',   colore: 'gold',   metodoAccesso: 'pin', note: 'Accesso cancello 2N' },
-  { id: 'C',  nome: 'Zona C — Piano -2',        piano: 'Piano -2', posti: 36, tipoDefault: 'standard',   colore: 'gold',   metodoAccesso: 'app', note: '' },
-  { id: 'V',  nome: 'Zona V — Visitatori',      piano: 'Piano -1', posti: 16, tipoDefault: 'visitatori', colore: 'purple', metodoAccesso: 'pin', note: 'Riservata pass temporanei · codice My2N' },
-  { id: 'EV', nome: 'Zona EV ⚡',               piano: 'Piano -1', posti:  6, tipoDefault: 'ev',         colore: 'sky',    metodoAccesso: 'qr',  note: 'Colonnine 22 kW' },
-  { id: 'H',  nome: 'Zona H — ♿ Disabili',      piano: 'Piano -1', posti:  8, tipoDefault: 'disabili',   colore: 'blue',   metodoAccesso: 'app', note: '' }
+  { id: 'A',  nome: 'Zona A — Piano -1',        piano: 'Piano -1', posti: 42, tipoDefault: 'standard',   colore: 'gold',   metodoAccesso: 'targa',     note: 'Varco ANPR: nessuna azione richiesta' },
+  { id: 'B',  nome: 'Zona B — Piano -1',        piano: 'Piano -1', posti: 48, tipoDefault: 'standard',   colore: 'gold',   metodoAccesso: 'pin',       note: 'Accesso da cancello con tastierino' },
+  { id: 'C',  nome: 'Zona C — Piano -2',        piano: 'Piano -2', posti: 36, tipoDefault: 'standard',   colore: 'gold',   metodoAccesso: 'bluetooth', note: 'Apertura in prossimità da app' },
+  { id: 'V',  nome: 'Zona V — Visitatori',      piano: 'Piano -1', posti: 16, tipoDefault: 'visitatori', colore: 'purple', metodoAccesso: 'pin',       note: 'Riservata pass temporanei · codice di accesso' },
+  { id: 'EV', nome: 'Zona EV ⚡',               piano: 'Piano -1', posti:  6, tipoDefault: 'ev',         colore: 'sky',    metodoAccesso: 'qr',        note: 'Colonnine 22 kW' },
+  { id: 'H',  nome: 'Zona H — ♿ Disabili',      piano: 'Piano -1', posti:  8, tipoDefault: 'disabili',   colore: 'blue',   metodoAccesso: 'guardiano', note: 'Accesso assistito dal presidio' }
 ];
 
-/* Metodi assegnabili a una zona dalla Config. Sottoinsieme di METODO_ACCESSO:
-   badge/pass/app2n sono stati storici, non varchi configurabili. */
-const METODI_ZONA = ['app', 'pin', 'qr', 'bluetooth', 'targa'];
+/* Metodi assegnabili a una zona dalla Config: tutti quelli della tassonomia,
+   perche' dal CODE-20 ogni metodo e' un varco realmente configurabile. */
+const METODI_ZONA = Object.keys(TIPI_METODO_ACCESSO);
 
 /* Stalli fuori servizio nel seed (mostrano il colore "manutenzione" in mappa) */
 const STALLI_MANUTENZIONE = ['C-35', 'C-36'];
@@ -1424,7 +1506,7 @@ function buildPrenotazioni(dipendenti, stalli) {
         checkIn: minutesToHHMM(rInt(7 * 60 + 40, 9 * 60 + 30)),
         checkOut: minutesToHHMM(rInt(13 * 60, 18 * 60)),
         creataDa: 'dipendente',
-        turnoId: null              // null = prenotazione giornaliera
+        turnoId: null, oraInizio: '09:00', oraFine: '18:00'              // null = prenotazione giornaliera
       });
     }
     const swQuanti = Math.round(conf.sw * (0.8 + (idx % 4) * 0.1));
@@ -1434,7 +1516,7 @@ function buildPrenotazioni(dipendenti, stalli) {
         id: nextId('PRE'), dipendenteId: dip.id, data: iso, tipo: 'sw',
         stalloId: null, stato: 'completata', checkIn: null, checkOut: null,
         creataDa: 'dipendente',
-        turnoId: null
+        turnoId: null, oraInizio: '09:00', oraFine: '18:00'
       });
     }
   });
@@ -1476,7 +1558,7 @@ function buildPrenotazioni(dipendenti, stalli) {
         checkIn:  stato !== 'attiva' ? minutesToHHMM(rInt(7 * 60 + 40, 9 * 60 + 30)) : null,
         checkOut: stato === 'completata' ? minutesToHHMM(rInt(13 * 60, 17 * 60)) : null,
         creataDa: 'dipendente',
-        turnoId: null
+        turnoId: null, oraInizio: '09:00', oraFine: '18:00'
       });
       return true;
     };
@@ -1544,7 +1626,7 @@ function applicaPatternEvidenza(prenotazioni, dipendenti, stalli) {
         stato: 'attiva',
         checkIn: null, checkOut: null,
         creataDa: 'dipendente',
-        turnoId: null
+        turnoId: null, oraInizio: '09:00', oraFine: '18:00'
       });
     });
   });
@@ -1584,7 +1666,7 @@ function buildVisitatori(dipendenti) {
     stato: v.stato,                     // atteso | dentro | uscito | revocato
     zonaErrata: !!v.zonaErrata,
     scaduto: !!v.scaduto,
-    codiceMy2N: String(rInt(1000, 9999)),
+    codiceAccesso: String(rInt(1000, 9999)),
     referenteId: i % 3 === 0 ? fmId : (dipendenti[(i % 12)] || dipendenti[0]).id,
     creatoIl: OGGI_ISO
   }));
@@ -1603,7 +1685,7 @@ function buildVisitatori(dipendenti) {
         stalloId: 'V-' + String((i % 16) + 1).padStart(2, '0'),
         data: isoG, oraInizio: base.da, oraFine: base.a,
         stato: 'uscito', zonaErrata: false, scaduto: false,
-        codiceMy2N: String(rInt(1000, 9999)),
+        codiceAccesso: String(rInt(1000, 9999)),
         referenteId: fmId, creatoIl: isoG
       });
     }
@@ -1661,7 +1743,7 @@ function buildAccessi(prenotazioni, dipendenti, visitatori) {
       stalloId: v.stalloId,
       ingresso: v.oraInizio,
       uscita: v.stato === 'uscito' ? v.oraFine : null,
-      metodo: 'pin',        /* il codice My2N del pass e' un PIN sul tastierino */
+      metodo: 'pin',        /* il codice del pass e' un PIN sul tastierino */
       stato: v.stato === 'uscito' ? 'uscito' : 'dentro',
       anomalia: v.zonaErrata ? 'zona' : null,
       targa: null,
@@ -1684,7 +1766,7 @@ function buildAccessi(prenotazioni, dipendenti, visitatori) {
     id: nextId('ACC'), data: OGGI_ISO, tipo: 'dipendente',
     personaId: null, personaNome: 'Veicolo EK 447 MN',
     stalloId: 'A-31', ingresso: hhmm(overstay), uscita: null,
-    metodo: 'badge2n', stato: 'dentro', anomalia: 'durata', targa: 'EK 447 MN',
+    metodo: 'badge', stato: 'dentro', anomalia: 'durata', targa: 'EK 447 MN',
     ingressoTs: overstay.getTime(),
     prenotazioneId: null
   });
@@ -1803,34 +1885,28 @@ function buildSegnalazioni(dipendenti) {
   return out;
 }
 
-/* --- 2.7 Hardware 2N ------------------------------------------------------ */
+/* --- 2.7 Barriere di accesso ------------------------------------------------------ */
 function buildHardware() {
-  const ev = (min) => hhmm(new Date(Date.now() - min * 60000));
-  return [
-    { id: nextId('HW'), nome: 'Cancello 2N',       tipo: 'tastierino2n', ruolo: 'principale',
-      cicli: 286, stato: 'online', ip: '192.168.1.40', firmware: 'v5.3.2',
-      ultimoEvento: 'Ultimo ciclo ' + ev(4), messaggio: null },
-
-    { id: nextId('HW'), nome: 'Lettore QR Code',   tipo: 'qrreader', ruolo: 'ausiliario',
-      cicli: 143, stato: 'online', ip: '192.168.1.41', firmware: 'v1.4.0',
-      ultimoEvento: 'Ultima scansione ' + ev(7), messaggio: null },
-
-    { id: nextId('HW'), nome: 'Sbarra automatica', tipo: 'sbarra', ruolo: 'ausiliario',
-      cicli: 118, stato: 'online', ip: '192.168.1.42', firmware: 'v2.1.0',
-      ultimoEvento: 'Ultimo ciclo ' + ev(11), messaggio: null },
-
-    { id: nextId('HW'), nome: 'Sistema Bluetooth', tipo: 'bluetooth', ruolo: 'ausiliario',
-      cicli: 0, stato: 'in_configurazione', ip: null, firmware: 'v0.9.1-beta',
-      ultimoEvento: 'Integrazione 1Control in corso', messaggio: 'Integrazione One Control in fase di test.' },
-
-    { id: nextId('HW'), nome: 'Telecamera ANPR',   tipo: 'anpr', ruolo: 'ausiliario',
-      cicli: 0, stato: 'in_configurazione', ip: null, firmware: 'v0.8.0-beta',
-      ultimoEvento: 'Integrazione Infoproget in corso', messaggio: 'Riconoscimento targhe in fase di attivazione.' },
-
-    { id: nextId('HW'), nome: 'Pilomat #1',        tipo: 'pilomat', ruolo: 'ausiliario',
-      cicli: 12, stato: 'anomalia', ip: '192.168.1.45', firmware: 'v3.2.1',
-      ultimoEvento: 'Sensor timeout 09:47', messaggio: 'Sensor timeout · verificare alimentazione.' }
-  ];
+  /* Due blocchi distinti: le BARRIERE sono l'ostacolo fisico, il METODO di
+     accesso vive sulla zona (vedi ZONE_SEED). Prima erano la stessa cosa, e
+     non si poteva avere un cancello superabile in due modi diversi. */
+  return {
+    barriere: [
+      { id: 'BAR-01', tipo: 'cancello', label: TIPI_BARRIERA.cancello, zona: 'B',
+        stato: 'online',   note: 'Ingresso principale',
+        ip: '10.20.0.11', firmware: 'v2.42.1', cicli: 214, ticket: null,
+        ultimoEvento: 'Apertura 09:52', messaggio: '' },
+      { id: 'BAR-02', tipo: 'sbarra',   label: TIPI_BARRIERA.sbarra,   zona: 'A',
+        stato: 'online',   note: '',
+        ip: '10.20.0.12', firmware: 'v1.8.0',  cicli: 168, ticket: null,
+        ultimoEvento: 'Apertura 09:58', messaggio: '' },
+      { id: 'BAR-03', tipo: 'pilomat',  label: TIPI_BARRIERA.pilomat,  zona: 'V',
+        stato: 'anomalia', note: 'Sensor timeout 09:47',
+        ip: '10.20.0.13', firmware: 'v1.4.6',  cicli:  31, ticket: null,
+        ultimoEvento: 'Timeout sensore 09:47',
+        messaggio: 'Il sensore di presenza non risponde: la barriera resta abbassata.' }
+    ]
+  };
 }
 
 /* --- 2.8 Config ----------------------------------------------------------- */
@@ -1873,7 +1949,7 @@ function buildConfig() {
       reportSettimanale: true,
       emailDestinatari: ['facility.manager@parkingcloud.eu']
     },
-    hardware2n: {
+    hardware: {
       codiceTemporaneoVisitatori: true,
       logAccessiCloud: true,
       integrazioneHr: 'in_valutazione'   // SSO / HR feed
@@ -1932,7 +2008,7 @@ function buildRichiestePass(dipendenti) {
     dataFine:   toISO(addDays(OGGI, 2)),
     stato: 'in_attesa',
     note: '',
-    codiceMy2N: null,
+    codiceAccesso: null,
     esitoIlTs: null,
     visto: true
   }];
@@ -2043,7 +2119,7 @@ function buildPrenotazioniOspedale(dipendenti, stalli, turni) {
         stato: passato ? 'completata' : 'attiva',
         checkIn:  passato ? t.inizio : null,
         checkOut: passato ? t.fine   : null,
-        creataDa: 'dipendente', turnoId: t.id
+        creataDa: 'dipendente', turnoId: t.id, oraInizio: t.inizio, oraFine: t.fine
       });
 
       /* riempimento del turno: quota diversa per turno, cosi' i KPI per turno
@@ -2063,7 +2139,7 @@ function buildPrenotazioniOspedale(dipendenti, stalli, turni) {
           stato: passato ? 'completata' : 'attiva',
           checkIn:  passato ? t.inizio : null,
           checkOut: passato ? t.fine   : null,
-          creataDa: 'dipendente', turnoId: t.id
+          creataDa: 'dipendente', turnoId: t.id, oraInizio: t.inizio, oraFine: t.fine
         });
       }
     });
@@ -2263,7 +2339,7 @@ const S = {
   visitatore:  (id) => AppState.visitatori.find(v => v.id === id) || null,
   accesso:     (id) => AppState.accessi.find(a => a.id === id) || null,
   segnalazione:(id) => AppState.segnalazioni.find(s => s.id === id) || null,
-  dispositivo: (id) => AppState.hardware.find(h => h.id === id) || null,
+  dispositivo: (id) => (AppState.hardware.barriere || []).find(h => h.id === id) || null,
   zona:        (id) => AppState.zone.find(z => z.id === id) || null,
   utenteDemo:  ()   => S.dipendente(AppState.utenti.dipendenteDemoId),
   utentePiattaforma: (id) => AppState.utentiPiattaforma.find(u => u.id === id) || null,
@@ -2761,30 +2837,59 @@ const S = {
   },
 
   kpiHardware() {
-    const h = AppState.hardware;
+    const h = AppState.hardware.barriere || [];
     const anomalie = h.filter(x => x.stato === 'anomalia');
     return {
       online:         h.filter(x => x.stato === 'online').length,
       configurazione: h.filter(x => x.stato === 'in_configurazione').length,
       totale:         h.length,
       anomalie:       anomalie.length,
-      anomaliaNome:   (anomalie[0] || {}).nome || '—',
-      cicli2n:        (h.find(x => x.ruolo === 'principale') || {}).cicli || 0,
+      anomaliaNome:   (anomalie[0] || {}).label || '-',
+      cicli:          h.reduce((s, x) => s + (x.cicli || 0), 0),
       uptime:         '99.8%'
     };
   },
 
+  prenotazioneById: (id) => AppState.prenotazioni.find(p => p.id === id) || null,
+
+  /** Le barriere, con il nome di zona risolto. */
+  barriere() {
+    return (AppState.hardware.barriere || []).map(b =>
+      Object.assign({}, b, { zonaNome: (S.zona(b.zona) || {}).nome || b.zona || '-' }));
+  },
+
+  /** Quanto deve fare il dipendente per entrare su questo stallo. */
+  tipoCheckInPerStallo(stalloId) {
+    const m = S.metodoAccessoPerStallo(stalloId);
+    return (TIPI_METODO_ACCESSO[m] || TIPI_METODO_ACCESSO.app).tipoCheckIn;
+  },
+  metodoDef(metodo) { return TIPI_METODO_ACCESSO[metodo] || TIPI_METODO_ACCESSO.app; },
+
+  /** Una riga per zona: metodo, livello di intervento, check-in e check-out. */
+  modalitaAccessoPerZona() {
+    return AppState.zone.map(z => {
+      const m = z.metodoAccesso || 'app';
+      const def = TIPI_METODO_ACCESSO[m] || TIPI_METODO_ACCESSO.app;
+      const liv = LIVELLO_CHECKIN[def.tipoCheckIn];
+      return {
+        zonaId: z.id, zonaNome: z.nome, metodo: m, label: def.label, desc: def.desc,
+        tipoCheckIn: def.tipoCheckIn, badge: liv.badge, colore: liv.colore,
+        checkIn: liv.checkIn,
+        checkOut: 'Manuale da app (fallback sempre disponibile)'
+      };
+    });
+  },
+
   /** metodi di accesso derivati dall'hardware effettivamente installato */
+  /** I metodi effettivamente in uso, dedotti dalle zone configurate. */
   metodiAccesso() {
-    return AppState.hardware
-      .filter(h => TIPI_HW[h.tipo] && TIPI_HW[h.tipo].metodoAccesso)
-      .map(h => ({
-        metodo:      TIPI_HW[h.tipo].metodoAccesso,
-        label:       METODO_ACCESSO[TIPI_HW[h.tipo].metodoAccesso],
-        icona:       TIPI_HW[h.tipo].icona,
-        dispositivo: h.nome,
-        stato:       h.stato
-      }));
+    const visti = {};
+    AppState.zone.forEach(z => {
+      const m = z.metodoAccesso || 'app';
+      if (!visti[m]) visti[m] = { metodo: m, label: (TIPI_METODO_ACCESSO[m] || {}).label || m, zone: [] };
+      visti[m].zone.push(z.id);
+    });
+    return Object.keys(visti).map(k => visti[k]);
   },
 
   /* ---- badge sidebar (derivati, si aggiornano da soli) ---- */
@@ -3038,7 +3143,7 @@ const S = {
         'Stallo':       v.stalloId || '',
         'Data Inizio':  v.data,
         'Data Fine':    v.dataFine || v.data,
-        'Codice My2N':  v.codiceMy2N || '',
+        'Codice di accesso':  v.codiceAccesso || '',
         'Stato':        S.statoVisitatore(v.id),
         'Referente':    v.referenteId ? S.nomePersona(v.referenteId) : ''
       }));
@@ -3406,7 +3511,10 @@ const A = {
       stalloId: spot, stato: 'attiva', checkIn: null, checkOut: null,
       creataDa: creataDa || 'dipendente',
       /* in modalita' giornaliera resta null, come da CODE-17A */
-      turnoId: turnoId || null
+      turnoId: turnoId || null,
+      /* fascia dichiarata: il dipendente puo' anticiparla o posticiparla */
+      oraInizio: (turnoId && S.turno(turnoId)) ? S.turno(turnoId).inizio : '09:00',
+      oraFine:   (turnoId && S.turno(turnoId)) ? S.turno(turnoId).fine   : '18:00'
     };
     AppState.prenotazioni.push(p);
     Store.emit('prenotazioni');
@@ -3431,6 +3539,20 @@ const A = {
       if (acc) { acc.uscita = hhmm(new Date()); acc.stato = 'uscito'; }
     }
     if (!opts || !opts.silent) Store.emit('prenotazioni');
+    return p;
+  },
+
+  /** Anticipa o posticipa inizio e fine di una prenotazione. */
+  modificaOrariPrenotazione({ prenotazioneId, oraInizio, oraFine }) {
+    const p = AppState.prenotazioni.find(x => x.id === prenotazioneId);
+    if (!p) return { errore: 'Prenotazione non trovata' };
+    if (!oraInizio || !oraFine) return { errore: 'Indica ora inizio e ora fine' };
+    if (S.minutiDa(oraFine) <= S.minutiDa(oraInizio)) {
+      return { errore: 'L\'ora di fine deve essere successiva a quella di inizio' };
+    }
+    p.oraInizio = oraInizio;
+    p.oraFine = oraFine;
+    Store.emit('prenotazioni');
     return p;
   },
 
@@ -3537,7 +3659,7 @@ const A = {
       nome, azienda: azienda || '—', email,
       stalloId: spot, data, dataFine: fine, oraInizio: oraInizio || '09:00', oraFine: oraFine || '18:00',
       stato: 'atteso', zonaErrata: false, scaduto: false,
-      codiceMy2N: String(Math.floor(1000 + Math.random() * 9000)),
+      codiceAccesso: String(Math.floor(1000 + Math.random() * 9000)),
       referenteId: referenteId || 'USR-0002',
       creatoIl: OGGI_ISO
     };
@@ -3573,6 +3695,34 @@ const A = {
   },
   estendiPass(id, oraFine) { const v = S.visitatore(id); if (v) { v.oraFine = oraFine || '20:00'; v.scaduto = false; } Store.emit('visitatori'); return v; },
 
+  /** Sposta il periodo di validita' del pass in ENTRAMBE le direzioni.
+      `estendiPass` sapeva solo aggiungere due ore in coda: un visitatore che
+      arriva prima del previsto non aveva modo di essere autorizzato. */
+  aggiornaPeriodoPass(id, { dataInizio, dataFine, oraInizio, oraFine }) {
+    const v = S.visitatore(id);
+    if (!v) return { errore: 'Visitatore non trovato' };
+    const dal = dataInizio || v.data;
+    const al  = dataFine || v.dataFine || v.data;
+    if (al < dal) return { errore: 'La data di fine non pu\u00f2 precedere quella di inizio' };
+    const oi = oraInizio || v.oraInizio;
+    const of = oraFine || v.oraFine;
+    /* Su un pass di un solo giorno la fascia oraria e' un intervallo reale e
+       va validata; su piu' giorni e' la fascia quotidiana, e un "18:00-09:00"
+       sarebbe comunque incoerente: si valida sempre. */
+    if (S.minutiDa(of) <= S.minutiDa(oi)) {
+      return { errore: 'L\'ora di fine deve essere successiva a quella di inizio' };
+    }
+    v.data = dal;
+    v.dataFine = al > dal ? al : null;
+    v.oraInizio = oi;
+    v.oraFine = of;
+    v.scaduto = false;
+    /* lo stato e' derivato: ricalcolarlo evita che resti "scaduto" a video */
+    v.statoCalcolato = S.statoVisitatore(v);
+    Store.emit('visitatori');
+    return v;
+  },
+
   /** modifica un pass esistente (es. riassegnazione dopo "zona errata") */
   mutaVisitatore(id, patch) {
     const v = S.visitatore(id);
@@ -3605,7 +3755,7 @@ const A = {
       dataFine: al < dal ? dal : al,
       stato: 'in_attesa',
       note: (note || '').trim(),
-      codiceMy2N: null,
+      codiceAccesso: null,
       esitoIlTs: null,
       /* `visto` governa il badge di notifica nell'hero: una richiesta appena
          inviata non e' una novita' da segnalare, quindi nasce gia' vista.
@@ -3618,7 +3768,7 @@ const A = {
   },
 
   /** Approva: crea il pass H24 sul range e riporta l'esito SULLA RICHIESTA.
-      Il codice My2N va scritto anche qui, non solo sul visitatore: il
+      Il codice di accesso va scritto anche qui, non solo sul visitatore: il
       dipendente vede la richiesta, non l'anagrafica visitatori. */
   approvaRichiestaPass(richiestaId, note) {
     const r = AppState.richiestePass.find(x => x.id === richiestaId);
@@ -3631,7 +3781,7 @@ const A = {
     });
     Object.assign(r, {
       stato: 'approvata', note: note || '',
-      codiceMy2N: v.codiceMy2N, visitatoreId: v.id,
+      codiceAccesso: v.codiceAccesso, visitatoreId: v.id,
       /* Le date si riscrivono DAL PASS creato, non si danno per scontate:
          se creaPassVisitatore() normalizzasse l'intervallo, la richiesta
          mostrerebbe altrimenti giorni diversi da quelli davvero concessi. */
@@ -3724,6 +3874,32 @@ const A = {
   },
 
   /* ---- HARDWARE ---- */
+  aggiungiBarriera({ tipo, zona, note }) {
+    const n = (AppState.hardware.barriere || []).length + 1;
+    const b = {
+      id: 'BAR-' + String(n).padStart(2, '0'),
+      tipo: tipo || 'sbarra', label: TIPI_BARRIERA[tipo] || TIPI_BARRIERA.sbarra,
+      zona: zona || null, stato: 'online', note: (note || '').trim(),
+      ip: '10.20.0.' + (10 + n), firmware: 'v1.0.0', cicli: 0, ticket: null,
+      ultimoEvento: 'Installata ' + hhmm(new Date()), messaggio: ''
+    };
+    AppState.hardware.barriere.push(b);
+    Store.emit('hardware');
+    return b;
+  },
+  aggiornaBarriera(id, patch) {
+    const b = S.dispositivo(id);
+    if (!b) return null;
+    Object.assign(b, patch);
+    if (patch && patch.tipo) b.label = TIPI_BARRIERA[patch.tipo] || b.label;
+    Store.emit('hardware');
+    return b;
+  },
+  rimuoviBarriera(id) {
+    AppState.hardware.barriere = (AppState.hardware.barriere || []).filter(b => b.id !== id);
+    Store.emit('hardware');
+  },
+
   aggiornaFirmware(hwId) {
     const h = S.dispositivo(hwId);
     if (!h) return null;
@@ -3740,7 +3916,7 @@ const A = {
     Store.emit('hardware');
     return h;
   },
-  setHardwareToggle(chiave, valore) { AppState.config.hardware2n[chiave] = valore; Store.emit('config'); },
+  setHardwareToggle(chiave, valore) { AppState.config.hardware[chiave] = valore; Store.emit('config'); },
 
   /* ---- CONFIG ---- */
   setPolicy(patch) {
@@ -3798,7 +3974,7 @@ const A = {
     const aperto = AppState.accessi.find(a => a.prenotazioneId === p.id && a.uscita === null);
     if (aperto) {
       aperto.ingresso = p.checkIn;
-      aperto.metodo = metodo === 'badge' ? 'badge2n' : S.metodoAccessoPerStallo(p.stalloId);
+      aperto.metodo = metodo || S.metodoAccessoPerStallo(p.stalloId);
       Store.emit('prenotazioni');
       Store.emit('accessi');
       return p;
@@ -3807,7 +3983,7 @@ const A = {
       id: nextId('ACC'), data: p.data, tipo: 'dipendente',
       personaId: p.dipendenteId, personaNome: dip ? dip.nomeCompleto : '\u2014',
       stalloId: p.stalloId, ingresso: p.checkIn, uscita: null,
-      metodo: metodo === 'badge' ? 'badge2n' : S.metodoAccessoPerStallo(p.stalloId),
+      metodo: metodo || S.metodoAccessoPerStallo(p.stalloId),
       stato: 'dentro', anomalia: null, targa: null, prenotazioneId: p.id
     });
     Store.emit('prenotazioni');
@@ -3915,7 +4091,12 @@ const A = {
     const p = Object.assign({}, patch);
     const posti = p.postiTotali;
     delete p.postiTotali;
-    if (p.nome) { p.nomeBreve = p.nome.split('—').pop().trim() || p.nome; p.descrizione = p.nome; }
+    /* Il nome breve si deriva solo se non e' stato indicato: dal CODE-20 il FM
+       puo' impostarlo a mano, e la derivazione non deve sovrascriverlo. */
+    if (p.nome) {
+      if (!p.nomeBreve) p.nomeBreve = p.nome.split('—').pop().trim() || p.nome;
+      p.descrizione = p.nome;
+    }
     Object.assign(AppState.config.sede, p);
     if (posti) A.impostaPostiTotali(parseInt(posti, 10));
     AppState.ui.editSede = false;
@@ -4133,7 +4314,13 @@ function avviaTimer() {
     });
   }, 300000);
 
-  /* 3. lo stato dei pass e' derivato: basta ridisegnare quando cambia giorno
+  /* 3. contatore live: si ridisegna solo se c'e' davvero qualcuno dentro,
+        altrimenti sarebbe un re-render al minuto a vuoto per tutta la demo */
+  setInterval(() => {
+    if (AppState.prenotazioni.some(p => p.checkInTs && !p.checkOutTs)) Store.emit('prenotazioni');
+  }, 60000);
+
+  /* 4. lo stato dei pass e' derivato: basta ridisegnare quando cambia giorno
         o fascia, senza toccare i dati */
   setInterval(() => {
     const cambiati = AppState.visitatori.some(v => v.statoCalcolato !== S.statoVisitatore(v));
@@ -4156,7 +4343,7 @@ global.PC.Utils = {
   iniziali, nextId, rInt, toCSV,
   isLavorativo, giorniLavorativi
 };
-global.PC.Domini = { TIPO_STALLO, DISPONIBILITA, STATO_STALLO, METODO_ACCESSO, METODI_ZONA, TIPO_SEGNALAZIONE, DIPARTIMENTI, RUOLI, PERMISSIONS, STATO_ACCOUNT, TIPI_HW };
+global.PC.Domini = { TIPO_STALLO, DISPONIBILITA, STATO_STALLO, METODO_ACCESSO, METODI_ZONA, TIPI_METODO_ACCESSO, LIVELLO_CHECKIN, TIPI_BARRIERA, TIPO_SEGNALAZIONE, DIPARTIMENTI, RUOLI, PERMISSIONS, STATO_ACCOUNT, TIPI_HW };
 
 })(window);
 
@@ -4703,7 +4890,7 @@ Modals.register('add-user', {
   body: () => {
     const liberi = [{ v: '', l: 'Auto-assegna (pool rotante)' }]
       .concat(S.stalliDisponibiliPer(null, U.OGGI_ISO).slice(0, 20).map(c => ({ v: c, l: c + ' (libero)' })));
-    return UI.alert("ℹ️ L'utente riceverà un'email con link di attivazione app e codice 2N.", 'info') + `
+    return UI.alert("ℹ️ L'utente riceverà un'email con link di attivazione dell'app e codice di accesso.", 'info') + `
       <div class="form-grid2">
         ${UI.campo('Nome', UI.input({ placeholder: 'Nome' }).replace('<input', '<input' + fld('nome')))}
         ${UI.campo('Cognome', UI.input({ placeholder: 'Cognome' }).replace('<input', '<input' + fld('cognome')))}
@@ -4736,7 +4923,7 @@ Modals.register('dip-pass', {
     const d = S.dipendente(c.dipendenteId) || {};
     const opzioni = [{ v: d.stalloId || '', l: d.stalloId ? `Stallo assegnato (${d.stalloId})` : 'Auto-assegna' }]
       .concat(S.stalliDisponibiliPer(d.id, f('data')).slice(0, 12).map(x => ({ v: x, l: x + ' (libero)' })));
-    return UI.alert('Il dipendente riceverà un codice My2N temporaneo valido nella fascia oraria indicata.', 'info') + `
+    return UI.alert('Il dipendente riceverà un codice di accesso temporaneo valido nella fascia oraria indicata.', 'info') + `
       <div class="form-grid2">
         ${UI.campo('Data', UI.input({ tipo: 'date', valore: f('data') }).replace('<input', '<input' + fld('data')))}
         ${UI.campo('Stallo', UI.select(opzioni, f('stallo')).replace('<select', '<select' + fld('stallo')))}
@@ -4744,7 +4931,7 @@ Modals.register('dip-pass', {
         ${UI.campo('Ora fine', UI.input({ tipo: 'time', valore: f('a') }).replace('<input', '<input' + fld('a')))}
       </div>
       <div class="code-box"><span style="font-size:22px">🔑</span>
-        <div><div class="code-box-lbl">Codice My2N</div><div class="code-val">${UI.esc(f('codice'))}</div></div>
+        <div><div class="code-box-lbl">Codice di accesso</div><div class="code-val">${UI.esc(f('codice'))}</div></div>
         ${UI.btn('↻ Rigenera', { azione: 'rigenera-codice', stile: 'margin-left:auto' })}
       </div>`;
   },
@@ -4785,7 +4972,7 @@ Modals.register('add-vis', {
     const fmDefault = S.facilityManager() || {};
     const referenti = State.utentiPiattaforma.map(u => ({ v: u.id, l: u.nomeCompleto + ' (' + S.etichettaRuolo(u.ruolo) + ')' }))
       .concat(State.dipendenti.filter(d => d.inEvidenza && d.stato === 'attivo').map(d => ({ v: d.id, l: d.nomeCompleto })));
-    return UI.alert('Il visitatore riceverà il <strong>codice My2N</strong> via email. Il referente riceverà conferma.', 'info') + `
+    return UI.alert('Il visitatore riceverà il <strong>codice di accesso</strong> via email. Il referente riceverà conferma.', 'info') + `
       <div class="form-grid2">
         ${UI.campo('Nome visitatore', UI.input({ placeholder: 'Nome Cognome' }).replace('<input', '<input' + fld('nome')))}
         ${UI.campo('Email visitatore ✱', UI.input({ tipo: 'email', placeholder: 'email@azienda.com' }).replace('<input', '<input' + fld('email')))}
@@ -4797,7 +4984,7 @@ Modals.register('add-vis', {
         ${UI.campo('Email referente', UI.input({ tipo: 'email', valore: fmDefault.email || '' }).replace('<input', '<input' + fld('emailReferente')))}
       </div>
       <div class="code-box"><span style="font-size:22px">🔑</span>
-        <div><div class="code-box-lbl">Codice My2N (generato automaticamente)</div>
+        <div><div class="code-box-lbl">Codice di accesso (generato automaticamente)</div>
         <div class="code-val">${UI.esc(f('codice'))}</div>
         <div class="code-box-lbl" style="font-size:10px;margin-top:2px">Valido solo nella fascia oraria selezionata</div></div>
         ${UI.btn('↻ Rigenera', { azione: 'rigenera-codice', stile: 'margin-left:auto' })}
@@ -4807,6 +4994,17 @@ Modals.register('add-vis', {
 });
 
 Modals.register('vis-det', {
+  size: 'modal-lg',
+  initForm: (c) => {
+    const v = S.visitatore(c.visitatoreId) || {};
+    return {
+      azione: 'notifica',
+      dataInizio: v.data || U.OGGI_ISO,
+      dataFine: v.dataFine || v.data || U.OGGI_ISO,
+      oraInizio: v.oraInizio || '09:00',
+      oraFine: v.oraFine || '18:00'
+    };
+  },
   titolo: (c) => { const v = S.visitatore(c.visitatoreId); return `🪪 ${UI.esc(v ? v.nome : 'Visitatore')}`; },
   body: (c) => {
     const v = S.visitatore(c.visitatoreId);
@@ -4820,7 +5018,7 @@ Modals.register('vis-det', {
         UI.infoBox('Visitatore', UI.esc(v.nome)),
         UI.infoBox('Azienda', UI.esc(v.azienda)),
         UI.infoBox('Pass', UI.esc(v.passId), true),
-        UI.infoBox('Codice My2N', UI.esc(v.codiceMy2N), true),
+        UI.infoBox('Codice di accesso', UI.esc(v.codiceAccesso), true),
         UI.infoBox('Stallo', UI.esc(v.stalloId || '—')),
         UI.infoBox('Validità', `${UI.esc(v.oraInizio)} – ${UI.esc(v.oraFine)}`, true),
         UI.infoBox('Stato', UI.badge(lbl, col)),
@@ -4831,6 +5029,15 @@ Modals.register('vis-det', {
           { v: 'riassegna', l: 'Riassegna a stallo corretto in Zona V' },
           { v: 'revoca', l: 'Revoca il pass' }
         ], f('azione', 'notifica')).replace('<select', '<select' + fld('azione'))) : ''}
+      <div class="modal-sec-tit">Periodo di validit\u00e0</div>
+      ${UI.alert('Il periodo si sposta in <strong>entrambe le direzioni</strong>: si pu\u00f2 anticipare l\'inizio per un visitatore in arrivo prima del previsto, non solo posticipare la fine.', 'info')}
+      <div class="form-grid2">
+        ${UI.campo('Data inizio', UI.input({ tipo: 'date', valore: f('dataInizio', v.data) }).replace('<input', '<input' + fld('dataInizio')))}
+        ${UI.campo('Data fine', UI.input({ tipo: 'date', valore: f('dataFine', v.dataFine || v.data) }).replace('<input', '<input' + fld('dataFine')))}
+        ${UI.campo('Ora inizio', UI.input({ tipo: 'time', valore: f('oraInizio', v.oraInizio) }).replace('<input', '<input' + fld('oraInizio')))}
+        ${UI.campo('Ora fine', UI.input({ tipo: 'time', valore: f('oraFine', v.oraFine) }).replace('<input', '<input' + fld('oraFine')))}
+      </div>
+      ${UI.btn('Aggiorna periodo', { azione: 'aggiorna-periodo-pass', params: { visitatoreId: c.visitatoreId }, variante: 'btn-primary', sm: false })}
     `;
   },
   footer: (c) => {
@@ -4934,7 +5141,7 @@ Modals.register('seg-collegata', {
     const o = S.segnalazione(c.segId) || {};
     return { tipo: o.tipo || 'altro', note: 'Collegata a segnalazione #' + (o.id || '') };
   },
-  titolo: () => '\U0001F6A8 Nuova segnalazione collegata',
+  titolo: () => '🚨 Nuova segnalazione collegata',
   body: (c) => {
     const o = S.segnalazione(c.segId);
     if (!o) return UI.alert('Segnalazione di origine non trovata.', 'danger');
@@ -4950,29 +5157,57 @@ Modals.register('seg-collegata', {
 });
 
 Modals.register('hw', {
-  titolo: (c) => { const h = S.dispositivo(c.hardwareId); return `⚡ ${UI.esc(h ? h.nome : 'Dispositivo')}`; },
+  titolo: (c) => { const h = S.dispositivo(c.hardwareId); return '⚡ ' + UI.esc(h ? h.label : 'Barriera'); },
   body: (c) => {
     const h = S.dispositivo(c.hardwareId);
-    if (!h) return UI.alert('Dispositivo non trovato.', 'danger');
-    return `
-      ${h.stato === 'anomalia' ? UI.alert(`⚠ ${UI.esc(h.messaggio)}`, 'danger') : UI.alert('✓ Dispositivo operativo, nessuna anomalia rilevata.', 'success')}
-      ${UI.infoGrid([
-        UI.infoBox('Tipo', UI.esc(h.tipo)),
-        UI.infoBox('Ruolo', UI.esc(h.ruolo === 'principale' ? 'Principale' : 'Ausiliario')),
-        UI.infoBox('Indirizzo IP', UI.esc(h.ip), true),
-        UI.infoBox('Firmware', UI.esc(h.firmware), true),
-        UI.infoBox('Cicli oggi', h.cicli),
-        UI.infoBox('Ultimo evento', `<span style="font-size:12px">${UI.esc(h.ultimoEvento)}</span>`)
-      ])}
-      ${h.ticket ? UI.alert(`🎫 Ticket <strong>${UI.esc(h.ticket)}</strong> aperto verso l'assistenza.`, 'info') : ''}
-    `;
+    if (!h) return UI.alert('Barriera non trovata.', 'danger');
+    const z = S.zona(h.zona);
+    /* Il metodo NON e' una proprieta' della barriera: si legge dalla zona che
+       protegge. Mostrarlo qui evita di aprire la Config per capire come la si
+       supera. */
+    const mod = S.modalitaAccessoPerZona().filter(m => m.zonaId === h.zona)[0];
+    return (h.stato === 'anomalia'
+        ? UI.alert('⚠ ' + UI.esc(h.messaggio || h.note || 'Anomalia rilevata.'), 'danger')
+        : UI.alert('✓ Barriera operativa, nessuna anomalia rilevata.', 'success'))
+      + UI.infoGrid([
+        UI.infoBox('Tipo', UI.esc(h.label)),
+        UI.infoBox('Zona protetta', z ? UI.esc(z.nome) : '<span class="muted">Nessuna</span>'),
+        UI.infoBox('Indirizzo IP', UI.esc(h.ip || '—'), true),
+        UI.infoBox('Firmware', UI.esc(h.firmware || '—'), true),
+        UI.infoBox('Cicli oggi', h.cicli || 0),
+        UI.infoBox('Ultimo evento', '<span style="font-size:12px">' + UI.esc(h.ultimoEvento || '—') + '</span>')
+      ])
+      + (mod ? UI.setting('Come si supera', UI.esc(mod.label) + ' · ' + UI.esc(mod.desc), UI.badge(mod.badge, mod.colore)) : '')
+      + (h.note ? UI.setting('Note', UI.esc(h.note), '') : '')
+      + (h.ticket ? UI.alert('🎫 Ticket <strong>' + UI.esc(h.ticket) + '</strong> aperto verso l&rsquo;assistenza.', 'info') : '');
   },
   footer: (c) => {
     const h = S.dispositivo(c.hardwareId);
     return chiudi('Chiudi')
+      + UI.btn('🗑 Rimuovi', { azione: 'rimuovi-barriera', params: { hardwareId: c.hardwareId }, variante: 'btn-danger', sm: false })
       + UI.btn('⬆ Aggiorna firmware', { azione: 'aggiorna-fw', params: { hardwareId: c.hardwareId }, sm: false })
       + (h && h.stato === 'anomalia' ? ok('Apri ticket', 'apri-ticket', { hardwareId: c.hardwareId }) : '');
   }
+});
+
+/* Aggiunta di una barriera: tipo, zona protetta, nota. Il metodo di accesso
+   NON si chiede qui — vive sulla zona, e chiederlo due volte creerebbe due
+   fonti di verita' destinate a divergere. */
+Modals.register('add-barriera', {
+  initForm: () => ({ tipo: 'sbarra', zona: (State.zone[0] || {}).id || '', note: '' }),
+  titolo: () => '🚧 Aggiungi barriera',
+  body: () => {
+    const zonaSel = f('zona', '');
+    const mod = S.modalitaAccessoPerZona().filter(m => m.zonaId === zonaSel)[0];
+    return UI.alert('Il <strong>metodo di accesso</strong> non si imposta qui: appartiene alla zona e si configura in Config &rsaquo; Parcheggio.', 'info')
+      + '<div class="form-grid2">'
+      + UI.campo('Tipo di barriera', UI.select(Object.keys(D.TIPI_BARRIERA).map(k => ({ v: k, l: D.TIPI_BARRIERA[k] })), f('tipo', 'sbarra')).replace('<select', '<select' + fld('tipo')))
+      + UI.campo('Zona protetta', UI.select(State.zone.map(z => ({ v: z.id, l: z.nome })), zonaSel, { azione: 'refresh-modale' }).replace('<select', '<select' + fld('zona')))
+      + '</div>'
+      + (mod ? UI.setting('Metodo attuale della zona', UI.esc(mod.label) + ' · ' + UI.esc(mod.checkIn), UI.badge(mod.badge, mod.colore)) : '')
+      + UI.campo('Note', UI.input({ valore: f('note', ''), placeholder: 'Es. Ingresso carraio lato nord', focusKey: 'barr-note' }).replace('<input', '<input' + fld('note')));
+  },
+  footer: () => chiudi() + ok('Aggiungi barriera', 'crea-barriera')
 });
 
 /* ============================================================================
@@ -5019,7 +5254,7 @@ Modals.register('add-stallo', {
    PRENOTAZIONI — Nuova prenotazione FM
 ============================================================================ */
 Modals.register('add-bk', {
-  initForm: () => ({ dipendente: '', data: U.OGGI_ISO, tipo: 'ufficio', stallo: '' }),
+  initForm: () => ({ dipendente: '', data: U.OGGI_ISO, tipo: 'ufficio', stallo: '', oraInizio: '09:00', oraFine: '18:00' }),
   titolo: () => '📅 Nuova Prenotazione (FM)',
   body: () => {
     const dips = State.dipendenti.filter(d => d.stato === 'attivo' && d.inEvidenza).map(d => ({ v: d.id, l: d.nomeCompleto }));
@@ -5036,6 +5271,10 @@ Modals.register('add-bk', {
         ${UI.campo('Tipo', UI.select([{ v: 'ufficio', l: 'In ufficio' }, { v: 'sw', l: 'Smart Working' }], f('tipo'), { azione: 'refresh-modale' }).replace('<select', '<select' + fld('tipo')))}
         ${f('tipo', 'ufficio') === 'ufficio' ? UI.campo('Stallo', UI.select(liberi, f('stallo')).replace('<select', '<select' + fld('stallo'))) : ''}
       </div>
+      ${f('tipo', 'ufficio') === 'ufficio' ? `<div class="form-grid2">
+        ${UI.campo('Ora inizio', UI.input({ tipo: 'time', valore: f('oraInizio', '09:00') }).replace('<input', '<input' + fld('oraInizio')))}
+        ${UI.campo('Ora fine', UI.input({ tipo: 'time', valore: f('oraFine', '18:00') }).replace('<input', '<input' + fld('oraFine')))}
+      </div>` : ''}
       ${f('tipo', 'ufficio') === 'ufficio' && liberi.length === 1 ? UI.alert('Nessuno stallo libero in questa data.', 'danger') : ''}`;
   },
   footer: () => chiudi() + ok('Conferma', 'crea-prenotazione-fm')
@@ -5312,9 +5551,59 @@ Modals.register('lista-attesa', {
 });
 
 /** Schermata da mostrare al custode quando l'accesso e' manuale. */
+/* ============================================================================
+   DIPENDENTE — dettaglio di una prenotazione
+   Stato, check-in/out (stesso blocco della card, cosi' non divergono),
+   spostamento degli orari e cancellazione, in un posto solo.
+============================================================================ */
+Modals.register('emp-prenot-det', {
+  size: 'modal-lg',
+  initForm: (c) => {
+    const p = S.prenotazioneById(c.prenotazioneId);
+    return { oraInizio: (p && p.oraInizio) || '09:00', oraFine: (p && p.oraFine) || '18:00' };
+  },
+  titolo: (c) => {
+    const p = S.prenotazioneById(c.prenotazioneId);
+    return p ? '📅 ' + UI.esc(U.fmtMedium(U.fromISO(p.data))) : '📅 Prenotazione';
+  },
+  body: (c) => {
+    const p = S.prenotazioneById(c.prenotazioneId);
+    if (!p) return UI.alert('Prenotazione non trovata.', 'danger');
+    const st = S.stallo(p.stalloId);
+    const t = p.turnoId ? S.turno(p.turnoId) : null;
+    const oggi = p.data === U.OGGI_ISO;
+    const blocco = (global.PC.EmpUI && global.PC.EmpUI.bloccoCheckIn) ? global.PC.EmpUI.bloccoCheckIn(p) : '';
+
+    return (oggi ? UI.alert('Prenotazione di <strong>oggi</strong>.', 'info') : '')
+      + UI.infoGrid([
+        UI.infoBox('Stallo', p.tipo === 'ufficio' ? UI.esc(p.stalloId) : 'Smart Working 🏠', true),
+        UI.infoBox('Zona', st ? UI.esc((S.zona(st.zonaId) || {}).nome || st.zonaId) : '—'),
+        UI.infoBox('Piano', st ? UI.esc(st.piano || '—') : '—'),
+        UI.infoBox(t ? 'Turno' : 'Fascia', t ? UI.esc(t.label) : UI.esc((p.oraInizio || '—') + ' – ' + (p.oraFine || '—')))
+      ])
+      + (p.tipo === 'ufficio' ? '<div class="modal-sec-tit">Accesso</div>' + blocco : '')
+      + '<div class="modal-sec-tit">Sposta gli orari</div>'
+      + UI.alert('Puoi <strong>anticipare</strong> o <strong>posticipare</strong> inizio e fine: lo stallo resta il tuo, cambia solo la fascia comunicata al Facility Manager.', 'info')
+      + '<div class="form-grid2">'
+      + UI.campo('Ora inizio', UI.input({ tipo: 'time', valore: f('oraInizio', '09:00'), focusKey: 'pd-oi' }).replace('<input', '<input' + fld('oraInizio')))
+      + UI.campo('Ora fine', UI.input({ tipo: 'time', valore: f('oraFine', '18:00'), focusKey: 'pd-of' }).replace('<input', '<input' + fld('oraFine')))
+      + '</div>'
+      + UI.btn('Aggiorna orari', { azione: 'emp-aggiorna-orari', params: { prenotazioneId: p.id }, variante: 'btn-primary', sm: false });
+  },
+  footer: (c) => {
+    const p = S.prenotazioneById(c.prenotazioneId);
+    return chiudi('Chiudi')
+      /* Da qui si torna alla schermata di prenotazione: e' l'unico modo di
+         cambiare stallo o convertire il giorno in Smart Working senza prima
+         cancellare. Toglierlo aveva reso il passaggio a SW un due-tempi. */
+      + (p ? UI.btn('Modifica giorno', { azione: 'emp-apri-giorno', params: { giornoIso: p.data }, sm: false }) : '')
+      + (p ? UI.btn('Cancella prenotazione', { azione: 'emp-cancella', params: { giornoIso: p.data }, variante: 'btn-danger', sm: false }) : '');
+  }
+});
+
 Modals.register('emp-mostra-prenotazione', {
   size: 'modal-lg',
-  titolo: () => '\U0001F4CB Prenotazione',
+  titolo: () => '📋 Prenotazione',
   body: (c) => {
     const p = State.prenotazioni.find(x => x.id === c.prenotazioneId);
     const d = S.dipendenteCorrente();
@@ -5323,7 +5612,7 @@ Modals.register('emp-mostra-prenotazione', {
     const t = p.turnoId ? S.turno(p.turnoId) : null;
     return `<div class="pass-custode">
       <div class="pc-logo" style="justify-content:center;margin-bottom:18px">
-        <div class="pc-logo-icon">\U0001F17F</div>
+        <div class="pc-logo-icon">🅿</div>
         <div class="pc-logo-text"><span class="pc-parking">parking</span><span class="pc-cloud">CLOUD</span></div>
       </div>
       <div class="pass-nome">${UI.esc(d.nomeCompleto)}</div>
@@ -6084,6 +6373,15 @@ UI.on('crea-prenotazione-fm', () => {
     tipo: fm.tipo || 'ufficio', stalloId: fm.stallo || null, creataDa: 'fm'
   });
   if (r.errore) { UI.toast('⚠ ' + r.errore); return; }
+  /* La fascia si applica DOPO: `prenota` scrive gli orari standard, e qui si
+     sovrascrivono solo se il FM li ha davvero toccati. Se sono incoerenti la
+     prenotazione resta valida con la fascia di default. */
+  if (r.tipo === 'ufficio' && (fm.oraInizio || fm.oraFine)) {
+    const esito = A.modificaOrariPrenotazione({
+      prenotazioneId: r.id, oraInizio: fm.oraInizio, oraFine: fm.oraFine
+    });
+    if (esito && esito.errore) UI.toast('⚠ ' + esito.errore + ' · orari standard applicati');
+  }
   Modals.close();
   const dip = S.dipendente(fm.dipendente);
   UI.toast(r.tipo === 'sw'
@@ -6423,14 +6721,14 @@ UI.on('invia-dip-pass', d => {
   const codice = Modals.form.codice;          // va letto PRIMA della close(), che azzera il form
   const dip = S.dipendente(d.dipendenteId);
   Modals.close();
-  UI.toast(`🔑 Codice My2N ${codice} inviato a ${dip.nomeCompleto}`);
+  UI.toast(`🔑 Codice accesso ${codice} inviato a ${dip.nomeCompleto}`);
 });
 
 })(window);
 
 /* ===== fm/visitatori.js ===== */
 /* ============================================================================
-   FM · Visitatori — pass temporanei My2N
+   FM · Visitatori — pass temporanei
    Un pass creato compare subito in lista, occupa uno stallo di Zona V e si
    vede nella mappa: nessun dato duplicato. [copre anche DV10]
 ============================================================================ */
@@ -6522,10 +6820,10 @@ UI.on('crea-visitatore', () => {
     nome: (fm.nome || 'Visitatore').trim(), azienda: fm.azienda, email: fm.email.trim(),
     dataISO: fm.data, oraInizio: fm.da, oraFine: fm.a, referenteId: fm.referente
   });
-  if (fm.codice) v.codiceMy2N = fm.codice;
+  if (fm.codice) v.codiceAccesso = fm.codice;
   Modals.close();
   A.vaiA('visitatori');
-  UI.toast(`✓ Pass ${v.passId} creato · codice My2N ${v.codiceMy2N} inviato a ${v.email}`);
+  UI.toast(`✓ Pass ${v.passId} creato · codice ${v.codiceAccesso} inviato a ${v.email}`);
 });
 
 UI.on('vis-arrivato', d => {
@@ -6535,6 +6833,19 @@ UI.on('vis-arrivato', d => {
 UI.on('vis-uscito', d => {
   const v = A.segnaVisitatoreUscito(d.visitatoreId);
   UI.toast(`\u23f9 ${v.nome} segnalato come uscito`);
+});
+
+UI.on('aggiorna-periodo-pass', d => {
+  Modals._collect();
+  const fm = Modals.form;
+  const r = A.aggiornaPeriodoPass(d.visitatoreId, {
+    dataInizio: fm.dataInizio, dataFine: fm.dataFine,
+    oraInizio: fm.oraInizio, oraFine: fm.oraFine
+  });
+  if (r && r.errore) { UI.toast('\u26a0 ' + r.errore); return; }
+  const gg = Math.round((U.fromISO(r.dataFine || r.data) - U.fromISO(r.data)) / 86400000) + 1;
+  UI.toast(`\u{1F553} ${r.nome}: periodo aggiornato \u00b7 ${U.fmtDM(U.fromISO(r.data))}` +
+    (gg > 1 ? ` \u2013 ${U.fmtDM(U.fromISO(r.dataFine))}` : '') + ` \u00b7 ${r.oraInizio}\u2013${r.oraFine}`);
 });
 
 UI.on('revoca-pass', d => {
@@ -6580,9 +6891,11 @@ UI.on('risolvi-zona-errata', d => {
 /* ===== fm/hardware.js ===== */
 /* ============================================================================
    FM · Hardware
-   Il parco dispositivi non è più solo 2N: tastierino, QR, Bluetooth (1Control),
-   ANPR (Infoproget), sbarra e pilomat. I metodi di accesso mostrati sono
-   DERIVATI dai dispositivi installati, non scritti a mano. [fix DV11]
+   Due blocchi distinti, ed è la differenza che conta: le BARRIERE sono
+   l'ostacolo fisico (cancello, sbarra, pilomat…), il METODO DI ACCESSO è come
+   lo si supera ed è una proprietà della ZONA. Prima erano la stessa entità, e
+   non si poteva descrivere un cancello superabile in due modi diversi né una
+   zona senza barriere ma con controllo accessi. [CODE-20]
 ============================================================================ */
 (function (global) {
 'use strict';
@@ -6595,85 +6908,83 @@ const STATO_HW = {
   offline:           { label: 'Offline',              colore: 'gray',  dot: false }
 };
 
-/** azione contestuale al tipo e allo stato del dispositivo */
-function azioneHw(h) {
-  if (h.stato === 'in_configurazione') return UI.tag('In integrazione', 'cyan');
-  if (h.stato === 'anomalia') {
-    return UI.btn('Verifica', { azione: 'apri-hw', params: { hardwareId: h.id }, variante: 'btn-danger' });
+/** azione contestuale allo stato della barriera */
+function azioneBarriera(b) {
+  if (b.stato === 'in_configurazione') return UI.tag('In integrazione', 'cyan');
+  if (b.stato === 'anomalia') {
+    return UI.btn('Verifica', { azione: 'apri-hw', params: { hardwareId: b.id }, variante: 'btn-danger' });
   }
-  if (h.tipo === 'tastierino2n' || h.tipo === 'qrreader') {
-    return UI.btn('Aggiorna firmware', { azione: 'aggiorna-fw', params: { hardwareId: h.id } });
-  }
-  return '<span class="muted">›</span>';
+  return UI.btn('Aggiorna firmware', { azione: 'aggiorna-fw', params: { hardwareId: b.id } });
 }
 
 global.PC.Sezioni.hardware = {
   render() {
     const k = S.kpiHardware();
-    const cfg = State.config.hardware2n;
-    const principale = State.hardware.find(h => h.ruolo === 'principale') || State.hardware[0];
+    const cfg = State.config.hardware;
+    const barriere = S.barriere();
+    const principale = barriere[0] || null;
 
     const kpi = UI.kpiGrid([
-      UI.kpi({ label: 'Dispositivi Online', val: `${k.online}/${k.totale}`, colore: k.anomalie ? 'amber' : 'green' }),
-      UI.kpi({ label: 'In configurazione',  val: k.configurazione, sub: k.configurazione ? 'integrazioni in corso' : 'nessuna', colore: 'cyan' }),
-      UI.kpi({ label: 'Anomalie',           val: k.anomalie, sub: k.anomalie ? UI.esc(k.anomaliaNome) : 'nessuna', colore: k.anomalie ? 'red' : 'green' }),
-      UI.kpi({ label: 'Cicli Oggi (2N)',    val: k.cicli2n, colore: 'blue' })
+      UI.kpi({ label: 'Barriere Online',   val: `${k.online}/${k.totale}`, colore: k.anomalie ? 'amber' : 'green' }),
+      UI.kpi({ label: 'In configurazione', val: k.configurazione, sub: k.configurazione ? 'integrazioni in corso' : 'nessuna', colore: 'cyan' }),
+      UI.kpi({ label: 'Anomalie',          val: k.anomalie, sub: k.anomalie ? UI.esc(k.anomaliaNome) : 'nessuna', colore: k.anomalie ? 'red' : 'green' }),
+      UI.kpi({ label: 'Cicli Oggi',        val: k.cicli, colore: 'blue' })
     ], 4);
 
-    /* ---- tabella dispositivi ---- */
-    const cardDisp = UI.card({
-      titolo: 'Dispositivi installati',
-      sub: `${k.totale} dispositivi · ${k.online} operativi · ${k.configurazione} in attivazione`,
+    /* ---- CARD 1 — barriere di accesso ---- */
+    const cardBarriere = UI.card({
+      titolo: '🚧 Barriere di accesso',
+      sub: `${k.totale} barriere · ${k.online} operative · ${k.anomalie} in anomalia`,
+      azioni: [UI.btn('+ Aggiungi barriera', { azione: 'apri-modale', params: { modale: 'add-barriera' }, variante: 'btn-primary' })],
       body: UI.tabella({
-        head: ['Dispositivo', 'Tipo', 'Metodo accesso', 'Cicli', 'Stato', ''],
+        head: ['Tipo', 'Zona', 'Stato', 'Note', ''],
         scroll: false,
-        rows: State.hardware.map(h => {
-          const tipo = D.TIPI_HW[h.tipo] || { label: h.tipo, icona: '', metodoAccesso: null };
-          const st = STATO_HW[h.stato] || STATO_HW.offline;
-          const metodo = tipo.metodoAccesso
-            ? UI.tag(D.METODO_ACCESSO[tipo.metodoAccesso], h.stato === 'online' ? 'blue' : 'cyan')
-            : '<span class="muted">—</span>';
-          const nota = h.tipo === 'anpr' ? 'Integrazione Infoproget'
-                     : h.tipo === 'bluetooth' ? 'Integrazione 1Control' : '';
+        rows: barriere.map(b => {
+          const st = STATO_HW[b.stato] || STATO_HW.offline;
           return UI.riga([
-            `<b>${UI.esc(h.nome)}</b> ${UI.tag(h.ruolo === 'principale' ? 'Principale' : 'Ausiliario', h.ruolo === 'principale' ? 'blue' : 'gray')}`
-              + (nota ? `<div class="muted" style="font-size:11px">${nota}</div>` : ''),
-            `${tipo.icona} ${UI.esc(tipo.label)}`,
-            metodo,
-            `<span class="mono">${h.cicli}</span>`,
+            `<b>${UI.esc(b.label)}</b><div class="muted" style="font-size:11px"><span class="mono">${UI.esc(b.id)}</span> · firmware ${UI.esc(b.firmware || '—')}</div>`,
+            UI.esc(b.zonaNome),
             UI.badge(st.label, st.colore, st.dot),
-            azioneHw(h)
-          ], { azione: 'apri-hw', params: { hardwareId: h.id }, classe: h.stato === 'anomalia' ? 'row-alert' : '' });
-        })
+            b.note ? UI.esc(b.note) : '<span class="muted">—</span>',
+            azioneBarriera(b)
+          ], { azione: 'apri-hw', params: { hardwareId: b.id }, classe: b.stato === 'anomalia' ? 'row-alert' : '' });
+        }),
+        vuoto: 'Nessuna barriera configurata: le zone sono ad accesso libero.'
       })
     });
 
-    /* ---- metodi di accesso: derivati dall'hardware installato ---- */
-    const metodi = S.metodiAccesso();
-    const cardMetodi = UI.card({
-      titolo: '🔑 Metodi di accesso disponibili',
-      sub: 'Generati automaticamente dai dispositivi installati',
-      stile: 'margin-bottom:14px',
-      body: `<div class="metodi-grid">
-        ${metodi.map(m => `
-          <div class="metodo-card ${m.stato === 'online' ? 'metodo-attivo' : 'metodo-config'}">
-            <div class="metodo-ico">${m.icona}</div>
-            <div class="metodo-nome">${UI.esc(m.label)}</div>
-            <div class="metodo-dev">${UI.esc(m.dispositivo)}</div>
-            ${m.stato === 'online' ? UI.badge('Attivo', 'green', true) : UI.badge('In configurazione 🔄', 'cyan')}
-          </div>`).join('')}
+    /* ---- CARD 2 — modalità di accesso per zona ---- */
+    const modalita = S.modalitaAccessoPerZona();
+    const cardModalita = UI.card({
+      titolo: '🔑 Modalità di accesso per zona',
+      sub: 'Il metodo si configura in Config › Parcheggio, zona per zona',
+      body: UI.tabella({
+        head: ['Zona', 'Metodo', 'Livello intervento', 'Check-in', 'Check-out'],
+        scroll: false,
+        rows: modalita.map(m => UI.riga([
+          `<b>${UI.esc(m.zonaNome)}</b>`,
+          `${UI.tag(m.label, 'blue')}<div class="muted" style="font-size:11px;margin-top:3px">${UI.esc(m.desc)}</div>`,
+          UI.badge(m.badge, m.colore),
+          UI.esc(m.checkIn),
+          `<span class="muted">${UI.esc(m.checkOut)}</span>`
+        ]))
+      }) + `<div class="muted" style="font-size:11.5px;padding:10px 14px;line-height:1.6">
+        Il check-out automatico verrà attivato con l'integrazione hardware completa.
+        Fino ad allora il check-out manuale dall'app resta disponibile per tutti i metodi,
+        anche quelli con check-in automatico.
       </div>`
     });
 
     /* ---- configurazione ---- */
     const cardCfg = UI.card({
       titolo: '⚙ Configurazione',
+      stile: 'margin-top:14px',
       body: [
-        UI.setting('Firmware ' + UI.esc(principale.nome), `${UI.esc(principale.firmware)} · ${UI.esc(principale.ultimoEvento)}`,
-          UI.btn('Aggiorna', { azione: 'aggiorna-fw', params: { hardwareId: principale.id } })),
-        UI.setting('Codice accesso temporaneo visitatori', 'PIN My2N generato automaticamente dal pass',
+        principale ? UI.setting('Firmware ' + UI.esc(principale.label), `${UI.esc(principale.firmware)} · ${UI.esc(principale.ultimoEvento)}`,
+          UI.btn('Aggiorna', { azione: 'aggiorna-fw', params: { hardwareId: principale.id } })) : '',
+        UI.setting('Codice accesso temporaneo visitatori', 'PIN generato automaticamente dal pass',
           UI.toggle('toggle-hw', cfg.codiceTemporaneoVisitatori, { chiave: 'codiceTemporaneoVisitatori' })),
-        UI.setting('Log accessi su Parking Cloud', 'Sincronizzazione real-time da tutti i dispositivi',
+        UI.setting('Log accessi su Parking Cloud', 'Sincronizzazione real-time da tutte le barriere',
           UI.toggle('toggle-hw', cfg.logAccessiCloud, { chiave: 'logAccessiCloud' })),
         UI.setting('Integrazione HR aziendale', 'SSO / HR Feed — in valutazione tecnica',
           UI.badge('In valutazione', 'amber'))
@@ -6681,10 +6992,10 @@ global.PC.Sezioni.hardware = {
     });
 
     return kpi
-      + UI.alert('Questa installazione supporta accesso via <strong>PIN</strong>, <strong>QR Code</strong>, <strong>Bluetooth</strong> e <strong>riconoscimento targa (ANPR)</strong>. Bluetooth e ANPR sono in fase di attivazione.', 'info')
-      + cardDisp
+      + cardBarriere
       + '<div style="height:14px"></div>'
-      + `<div class="g2"><div>${cardMetodi}</div><div>${cardCfg}</div></div>`;
+      + cardModalita
+      + cardCfg;
   }
 };
 
@@ -6693,12 +7004,29 @@ UI.on('apri-hw', d => { A.seleziona('hardwareId', d.hardwareId); Modals.open('hw
 
 UI.on('aggiorna-fw', d => {
   const h = A.aggiornaFirmware(d.hardwareId);
-  UI.toast(`✓ ${h.nome}: firmware aggiornato a ${h.firmware}`);
+  if (h) UI.toast(`✓ ${h.label}: firmware aggiornato a ${h.firmware}`);
 });
 
 UI.on('apri-ticket', d => {
   const h = A.apriTicketHardware(d.hardwareId);
-  UI.toast(`🎫 Ticket ${h.ticket} aperto per ${h.nome}`);
+  if (h) UI.toast(`🎫 Ticket ${h.ticket} aperto per ${h.label}`);
+});
+
+UI.on('crea-barriera', () => {
+  Modals._collect();
+  const b = A.aggiungiBarriera({
+    tipo: Modals.form.tipo, zona: Modals.form.zona, note: Modals.form.note
+  });
+  Modals.close();
+  UI.toast(`🚧 ${b.label} aggiunta · ${(S.zona(b.zona) || {}).nome || 'nessuna zona'}`);
+});
+
+UI.on('rimuovi-barriera', d => {
+  const b = S.dispositivo(d.hardwareId);
+  if (!b) return;
+  A.rimuoviBarriera(d.hardwareId);
+  Modals.close();
+  UI.toast(`${b.label} rimossa`);
 });
 
 UI.onChange('toggle-hw', (d, ev) => {
@@ -6816,7 +7144,22 @@ function tabParcheggio() {
       </div>
     </div>`;
 
-  return `<div class="g2"><div>${cardZone}</div><div>${cardTipologie}${cardBloccata}</div></div>`;
+  /* Il nome sede si cambiava solo da Amministrazione: il FM che prepara la
+     demo per un cliente deve poterlo fare senza passare da un altro ruolo. */
+  const sede = State.config.sede;
+  const cardSede = UI.card({
+    titolo: '🏢 Informazioni sede',
+    sub: 'Compaiono nel topbar, nella sidebar e in tutti gli export',
+    stile: 'margin-bottom:14px',
+    azioni: [UI.btn('Salva', { azione: 'salva-info-sede', variante: 'btn-primary' })],
+    body: `<div class="form-grid2">
+      ${UI.campo('Nome sede', UI.input({ id: 'info-sede-nome', valore: sede.nome, focusKey: 'isede-n' }))}
+      ${UI.campo('Nome breve <span class="muted">(sidebar e topbar)</span>', UI.input({ id: 'info-sede-breve', valore: sede.nomeBreve || '', focusKey: 'isede-b' }))}
+    </div>
+    ${UI.campo('Indirizzo', UI.input({ id: 'info-sede-ind', valore: sede.indirizzo || '', focusKey: 'isede-i' }))}`
+  });
+
+  return cardSede + `<div class="g2"><div>${cardZone}</div><div>${cardTipologie}${cardBloccata}</div></div>`;
 }
 
 /* ── TAB 2 · POLICY ─────────────────────────────────────────────────────── */
@@ -6936,7 +7279,7 @@ function tabNotifiche() {
     body: [
       UI.setting('Alert segnalazione peer-to-peer', 'Notifica immediata a ogni segnalazione da dipendente',
         UI.toggle('toggle-notifica', n.peerToPeer, { chiave: 'peerToPeer' })),
-      UI.setting('Alert anomalia hardware', 'Cancello 2N, sbarra e Pilomat',
+      UI.setting('Alert anomalia hardware', 'Cancello, sbarra e pilomat',
         UI.toggle('toggle-notifica', n.anomaliaHardware, { chiave: 'anomaliaHardware' })),
       UI.setting('Sosta prolungata — notifica dipendente', `Inviata al superamento di ${State.config.prenotazioni.notificaDurataOre}h`,
         UI.toggle('toggle-notifica', n.sostaProlungata, { chiave: 'sostaProlungata' })),
@@ -7084,6 +7427,14 @@ UI.onChange('zona-metodo', (d, ev) => {
   UI.toast(`🔑 ${z.nome}: accesso via ${D.METODO_ACCESSO[z.metodoAccesso]}`);
 });
 
+UI.on('salva-info-sede', () => {
+  const val = (id) => ((document.getElementById(id) || {}).value || '').trim();
+  const nome = val('info-sede-nome');
+  if (!nome) { UI.toast('Il nome sede non puo\' essere vuoto'); return; }
+  A.aggiornaSede({ nome: nome, nomeBreve: val('info-sede-breve') || nome, indirizzo: val('info-sede-ind') });
+  UI.toast('✓ Informazioni sede aggiornate');
+});
+
 UI.on('aggiungi-zona', () => { const id = A.aggiungiZona(); UI.toast(`Zona ${id} aggiunta · imposta i posti e salva`); });
 UI.on('rimuovi-zona', d => {
   const n = State.stalli.filter(s => s.zonaId === d.zonaId).length;
@@ -7145,7 +7496,7 @@ UI.on('approva-req', d => {
   Modals._collect();
   const v = A.approvaRichiestaPass(d.richiestaId, Modals.form.note);
   Modals.close();
-  UI.toast(`✓ Approvato · codice My2N ${v.codiceMy2N} inviato a ${v.email}`);
+  UI.toast(`✓ Approvato · codice ${v.codiceAccesso} inviato a ${v.email}`);
 });
 UI.on('rifiuta-req', d => {
   /* _collect() PRIMA di leggere il form: senza, la motivazione scritta dal FM
@@ -7778,7 +8129,7 @@ global.PC.Sezioni.dipendenteView = {
         </div>
         ${future.length ? future.map(p => {
           const d = U.fromISO(p.data);
-          return `<div class="my-booking-card"${UI.act('emp-apri-giorno', { giornoIso: p.data })}>
+          return `<div class="my-booking-card${p.data === U.OGGI_ISO ? ' mbc-oggi' : ''}${p.checkInTs && !p.checkOutTs ? ' mbc-dentro' : ''}"${UI.act('emp-apri-prenot', { prenotazioneId: p.id })}>
             <div><div class="mbc-date">${d.getDate()}</div><div class="mbc-month">${U.MONTHS_SHORT[d.getMonth()]}</div></div>
             <div class="mbc-info">
               <div class="mbc-spot">${p.tipo === 'ufficio'
@@ -7787,21 +8138,8 @@ global.PC.Sezioni.dipendenteView = {
               <div class="mbc-meta">${U.DAYS_FULL_IT[d.getDay()]} · ${p.tipo === 'ufficio' ? UI.esc((S.stallo(p.stalloId) || {}).piano || '') + ' · check-in via app' : 'nessuno stallo necessario'}</div>
             </div>
             <div class="mbc-actions">
-              ${p.tipo !== 'ufficio' ? UI.badge('Smart W.', 'amber')
-                : p.checkOutTs
-                  ? UI.badge('\u2713 Completato \u00b7 ' + U.fmtMinuti(Math.max(0, p.checkOutTs - p.checkInTs)), 'gray')
-                  : p.checkInTs
-                    ? UI.badge('\u2713 Dentro \u00b7 ' + UI.esc(p.checkIn) + ' \u00b7 via ' + UI.esc(p.metodoCheckIn === 'badge' ? 'badge' : 'app'), 'green', true)
-                    : UI.badge('Prenotato', 'blue')}
-              ${p.tipo === 'ufficio' && p.checkInTs && !p.checkOutTs
-                ? `<span class="mbc-timer">\u23f1 ${U.fmtMinuti((S.durataPrenotazioneAttiva(p.id) || 0) * 60000)}</span>`
-                  + UI.btn('\u23f9 Check-out', { azione: 'emp-checkout', params: { prenotazioneId: p.id }, variante: 'btn-danger' })
-                : ''}
-              ${p.tipo === 'ufficio' && !p.checkInTs ? `
-                ${UI.btn('\u25b6 Check-in App', { azione: 'emp-checkin', params: { prenotazioneId: p.id, metodo: 'app' }, variante: 'btn-primary' })}
-                ${UI.btn('\U0001FAAA Badge', { azione: 'emp-checkin', params: { prenotazioneId: p.id, metodo: 'badge' } })}
-                ${UI.btn('\U0001F4CB Mostra prenotazione', { azione: 'apri-modale', params: { modale: 'emp-mostra-prenotazione', prenotazioneId: p.id } })}` : ''}
-              ${UI.btn('Cancella', { azione: 'emp-apri-cancella', params: { giornoIso: p.data } })}
+              ${p.tipo !== 'ufficio' ? UI.badge('Smart W.', 'amber') : bloccoCheckIn(p)}
+              ${UI.btn('Dettagli', { azione: 'emp-apri-prenot', params: { prenotazioneId: p.id } })}
             </div>
           </div>`;
         }).join('') : UI.vuoto('Nessuna prenotazione futura. Clicca su un giorno del calendario per prenotare.')}
@@ -7885,10 +8223,10 @@ function sezioneRichieste(dip) {
                 ${UI.badge(lbl, col)}
               </div>
               <div class="emp-req-date">📅 ${UI.esc(U.fmtMedium(U.fromISO(r.dataInizio)))}${unGiorno ? '' : ' → ' + UI.esc(U.fmtMedium(U.fromISO(r.dataFine)))}</div>
-              ${r.stato === 'approvata' && r.codiceMy2N
+              ${r.stato === 'approvata' && r.codiceAccesso
                 ? `<div class="emp-code-box">
                      <span class="emp-code-lbl">Codice accesso</span>
-                     <span class="emp-code-val">${UI.esc(r.codiceMy2N)}</span>
+                     <span class="emp-code-val">${UI.esc(r.codiceAccesso)}</span>
                      <span class="emp-code-note">Valido dal ${UI.esc(U.fmtDM(U.fromISO(r.dataInizio)))} al ${UI.esc(U.fmtDM(U.fromISO(r.dataFine)))} · H24</span>
                    </div>`
                 : ''}
@@ -7959,16 +8297,113 @@ function cardGiorno(g, dip) {
   else if (fuoriFinestra)         { cls += ' day-past'; stato = 'Non prenotabile'; statoCls = 'past'; }
   else                            { cls += ' day-todo'; stato = '+ Prenota'; statoCls = 'free'; }
   if (isOggi) cls += ' day-today';
+  /* Il pallino da solo non bastava: su una griglia di cinque giorni tutti
+     uguali, il giorno in corso E' l'informazione principale. */
+  const dentro = pre && pre.checkInTs && !pre.checkOutTs;
+  if (isOggi && pre && pre.tipo === 'ufficio') cls += ' day-today-booked';
+  if (isOggi && dentro) cls += ' day-dentro';
 
   const cliccabile = !passato && !fuoriFinestra;
-  return `<div class="${cls}"${cliccabile ? UI.act('emp-apri-giorno', { giornoIso: iso }) : ''}>
-    ${isOggi ? '<div class="day-today-dot"></div>' : ''}
+  /* Su un giorno gia' prenotato si apre il DETTAGLIO, non di nuovo la
+     prenotazione: da li' si fa check-in, si spostano gli orari, si cancella. */
+  const azione = pre && pre.tipo === 'ufficio'
+    ? UI.act('emp-apri-prenot', { prenotazioneId: pre.id })
+    : UI.act('emp-apri-giorno', { giornoIso: iso });
+  return `<div class="${cls}"${cliccabile ? azione : ''}>
+    ${isOggi ? '<div class="day-oggi-badge">OGGI</div>' : ''}
     <div class="day-dow">${U.DAYS_IT[g.getDay()]}</div>
     <div class="day-num">${g.getDate()}</div>
     <div class="day-status ${statoCls}">${stato}</div>
     ${spot ? `<div class="day-spot">${UI.esc(spot)}</div>` : ''}
+    ${dentro ? `<div class="day-timer">\u23f1 ${U.fmtMinuti((S.durataPrenotazioneAttiva(pre.id) || 0) * 60000)}</div>` : ''}
   </div>`;
 }
+
+/* ============================================================================
+   CHECK-IN — la UI cambia con il LIVELLO DI INTERVENTO della zona, non con il
+   metodo. Sotto ANPR non ha senso un pulsante "Check-in": l'accesso e' gia'
+   avvenuto e chiederlo sarebbe una bugia. Sotto keypad, invece, il pulsante e'
+   l'unico modo che il sistema ha di sapere che sei entrato.
+   Il fallback manuale resta SEMPRE, a ogni livello: se il varco non legge, il
+   dipendente deve poter chiudere il cerchio da solo.
+   Esportato su PC.EmpUI perche' lo usa anche il modale emp-prenot-det.
+============================================================================ */
+function bloccoCheckIn(p, opt) {
+  opt = opt || {};
+  if (!p || p.tipo !== 'ufficio') return '';
+  const metodo = S.metodoAccessoPerStallo(p.stalloId);
+  const def = S.metodoDef(metodo);
+  const liv = D.LIVELLO_CHECKIN[def.tipoCheckIn];
+
+  /* --- gia' uscito --- */
+  if (p.checkOutTs) {
+    return `<div class="chk-box chk-done">
+      ${UI.badge('\u2713 Completato \u00b7 ' + U.fmtMinuti(Math.max(0, p.checkOutTs - p.checkInTs)), 'gray')}
+      <div class="chk-hint">Ingresso ${UI.esc(p.checkIn || '\u2014')} \u00b7 uscita ${UI.esc(p.checkOut || '\u2014')}</div>
+    </div>`;
+  }
+
+  /* --- dentro: timer + check-out, identici a ogni livello --- */
+  if (p.checkInTs) {
+    return `<div class="chk-box chk-in">
+      <div class="chk-row">
+        ${UI.badge('\u2713 Dentro \u00b7 dalle ' + UI.esc(p.checkIn), 'green', true)}
+        <span class="mbc-timer">\u23f1 ${U.fmtMinuti((S.durataPrenotazioneAttiva(p.id) || 0) * 60000)}</span>
+      </div>
+      <div class="chk-hint">Accesso registrato via ${UI.esc(S.metodoDef(p.metodoCheckIn || metodo).label)}</div>
+      ${UI.btn('\u23f9 Check-out', { azione: 'emp-checkout', params: { prenotazioneId: p.id }, variante: 'btn-danger' })}
+    </div>`;
+  }
+
+  /* --- non ancora entrato: la UI dipende dal livello --- */
+  const fallback = UI.btn('Check-in manuale (fallback)', {
+    azione: 'emp-checkin', params: { prenotazioneId: p.id, metodo: 'app' }
+  });
+
+  if (def.tipoCheckIn === 'zero') {
+    return `<div class="chk-box chk-auto">
+      <div class="chk-lead">${UI.badge(liv.badge, liv.colore)} ${UI.esc(def.label)}</div>
+      <div class="chk-text">Il tuo accesso viene rilevato automaticamente dalla telecamera.
+        Nessuna azione richiesta.</div>
+      ${fallback}
+    </div>`;
+  }
+
+  if (def.tipoCheckIn === 'azione') {
+    const dispositivo = metodo === 'badge' ? 'badge' : metodo === 'qr' ? 'telefono' : 'telefono';
+    const qr = metodo === 'qr'
+      ? `<div class="chk-qr"><div class="chk-qr-lbl">Codice prenotazione</div>
+           <div class="chk-qr-code">${UI.esc(p.id)}</div>
+           <div class="chk-qr-hint">Inquadra il lettore con l'app per trasmetterlo</div></div>`
+      : '';
+    return `<div class="chk-box chk-azione">
+      <div class="chk-lead">${UI.badge(liv.badge, liv.colore)} ${UI.esc(def.label)}</div>
+      <div class="chk-text">Accedi con ${UI.esc(def.label)} avvicinando il tuo ${dispositivo} al lettore.</div>
+      ${qr}
+      ${UI.btn('\u2713 Ho effettuato l\'accesso', { azione: 'emp-checkin', params: { prenotazioneId: p.id, metodo: metodo }, variante: 'btn-primary' })}
+      ${fallback}
+    </div>`;
+  }
+
+  /* livello 2 — manuale */
+  const testoPin = metodo === 'pin'
+    ? '<div class="chk-text">Inserisci il tuo PIN al keypad, poi conferma qui sotto.</div>' : '';
+  const etichetta = metodo === 'pin' ? '\u2713 Confermo accesso con PIN' : '\u25b6 Check-in';
+  const guardiano = metodo === 'guardiano'
+    ? UI.btn('📋 Mostra prenotazione al guardiano', { azione: 'apri-modale', params: { modale: 'emp-mostra-prenotazione', prenotazioneId: p.id }, sm: false })
+    : '';
+  return `<div class="chk-box chk-manuale">
+    <div class="chk-lead">${UI.badge(liv.badge, liv.colore)} ${UI.esc(def.label)}</div>
+    ${testoPin}
+    <div class="chk-cta">
+      ${UI.btn(etichetta, { azione: 'emp-checkin', params: { prenotazioneId: p.id, metodo: metodo }, variante: 'btn-success', sm: false })}
+      ${guardiano}
+    </div>
+    ${opt.senzaFallback ? '' : fallback}
+  </div>`;
+}
+
+global.PC.EmpUI = { bloccoCheckIn: bloccoCheckIn };
 
 /* ---- handler ---------------------------------------------------------- */
 UI.on('week-emp', d => A.empWeek(parseInt(d.delta, 10)));
@@ -8003,6 +8438,19 @@ UI.on('emp-apri-giorno', d => {
   Modals.open('emp-book', { giornoISO: d.giornoIso });
 });
 UI.on('emp-apri-cancella', d => Modals.open('emp-cancel', { giornoISO: d.giornoIso }));
+
+UI.on('emp-apri-prenot', d => Modals.open('emp-prenot-det', { prenotazioneId: d.prenotazioneId }));
+
+UI.on('emp-aggiorna-orari', d => {
+  Modals._collect();
+  const r = A.modificaOrariPrenotazione({
+    prenotazioneId: d.prenotazioneId,
+    oraInizio: Modals.form.oraInizio,
+    oraFine: Modals.form.oraFine
+  });
+  if (r && r.errore) { UI.toast(r.errore); return; }
+  UI.toast(`\u{1F553} Orari aggiornati \u00b7 ${r.oraInizio} \u2013 ${r.oraFine}`);
+});
 UI.on('emp-sel-tipo', d => { Modals._collect(); Modals.form.tipo = d.valore; Modals._render(); });
 
 /* selezione del turno: stesso schema di emp-sel-tipo, il re-render ricalcola
@@ -8134,7 +8582,7 @@ const NAV = [
     { id: 'visitatori',   ico: '🪪', label: 'Visitatori', perm: 'visitatori' }
   ]},
   { gruppo: 'Sistema',      voci: [
-    { id: 'hardware',     ico: '⚡', label: 'Hardware · 2N', perm: 'hardware' },
+    { id: 'hardware',     ico: '⚡', label: 'Hardware', perm: 'hardware' },
     { id: 'config',       ico: '⚙',  label: 'Policy & Config', perm: 'config' },
     { id: 'export',       ico: '⤓',  label: 'Esporta Report', modale: 'export' },
     /* visibile solo se PERMISSIONS[ruolo].amministrazione === true */
@@ -8151,7 +8599,7 @@ const TABS = [
   ['prenotazioni', '📅 Prenotazioni'], ['segnalazioni', '🚨 Segnalazioni'],
   ['analytics', '📊 Analytics'],
   ['dipendenti', '👥 Dipendenti'], ['visitatori', '🪪 Visitatori'],
-  ['hardware', '⚡ 2N'], ['config', '⚙ Config'],
+  ['hardware', '⚡ Hardware'], ['config', '⚙ Config'],
   ['amministrazione', '⚙ Amministrazione']   // filtrata dai permessi: solo Admin
 ];
 
@@ -8174,7 +8622,7 @@ function renderSidebar() {
       <div class="sb-sub">${isAdmin ? 'Console Amministrazione' : 'Facility Manager Console'}</div>
       <div class="sb-client"><div class="live"></div>
         <div><div style="font-weight:700;font-size:11.5px">${UI.esc(sede.nomeBreve)}</div>
-        <div style="font-size:9.5px;opacity:.6">${kpi.totale} posti · 2N ${hw.online}/${hw.totale} online</div></div>
+        <div style="font-size:9.5px;opacity:.6">${kpi.totale} posti · ${hw.online}/${hw.totale} barriere online</div></div>
       </div>
     </div>
     <nav class="sb-nav">
@@ -8214,14 +8662,9 @@ function renderIdentita(utente, ruolo, isAdmin) {
 /* ---- TOPBAR ---- */
 function renderTopbar() {
   const sede = State.config.sede;
-  const hw = S.kpiHardware();
-  const okHw = hw.anomalie === 0;
   UI.mount('#fm-topbar', `
     <div class="topbar-title"><span class="pc-parking pc-parking-dark">parking</span><span class="pc-cloud pc-cloud-dark">CLOUD</span> <small>${UI.esc(sede.descrizione)} · ${S.kpiStalli().totale} posti</small></div>
     <div style="display:flex;gap:7px;align-items:center">
-      <div class="hw-chip"${UI.act('nav', { sezione: 'hardware' })} title="${okHw ? 'Tutti i dispositivi online' : hw.anomaliaNome + ' in anomalia'}">
-        <span class="dot dot-${okHw ? 'ok' : 'warn'}"></span>2N ${okHw ? 'Online' : hw.online + '/' + hw.totale}
-      </div>
       ${UI.btn('📅 ' + UI.esc(State.config.periodo.label), { azione: 'apri-modale', params: { modale: 'daterange' }, sm: false, stile: 'font-size:12px;padding:7px 12px' })}
       ${UI.btn('⤓', { azione: 'apri-modale', params: { modale: 'export' }, sm: false, stile: 'padding:7px 10px' })}
       ${UI.btn('🪪 + Pass Visitatore', { azione: 'apri-modale', params: { modale: 'add-vis' }, variante: 'btn-cyan' })}

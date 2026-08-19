@@ -231,7 +231,7 @@ Modals.register('add-user', {
   body: () => {
     const liberi = [{ v: '', l: 'Auto-assegna (pool rotante)' }]
       .concat(S.stalliDisponibiliPer(null, U.OGGI_ISO).slice(0, 20).map(c => ({ v: c, l: c + ' (libero)' })));
-    return UI.alert("ℹ️ L'utente riceverà un'email con link di attivazione app e codice 2N.", 'info') + `
+    return UI.alert("ℹ️ L'utente riceverà un'email con link di attivazione dell'app e codice di accesso.", 'info') + `
       <div class="form-grid2">
         ${UI.campo('Nome', UI.input({ placeholder: 'Nome' }).replace('<input', '<input' + fld('nome')))}
         ${UI.campo('Cognome', UI.input({ placeholder: 'Cognome' }).replace('<input', '<input' + fld('cognome')))}
@@ -264,7 +264,7 @@ Modals.register('dip-pass', {
     const d = S.dipendente(c.dipendenteId) || {};
     const opzioni = [{ v: d.stalloId || '', l: d.stalloId ? `Stallo assegnato (${d.stalloId})` : 'Auto-assegna' }]
       .concat(S.stalliDisponibiliPer(d.id, f('data')).slice(0, 12).map(x => ({ v: x, l: x + ' (libero)' })));
-    return UI.alert('Il dipendente riceverà un codice My2N temporaneo valido nella fascia oraria indicata.', 'info') + `
+    return UI.alert('Il dipendente riceverà un codice di accesso temporaneo valido nella fascia oraria indicata.', 'info') + `
       <div class="form-grid2">
         ${UI.campo('Data', UI.input({ tipo: 'date', valore: f('data') }).replace('<input', '<input' + fld('data')))}
         ${UI.campo('Stallo', UI.select(opzioni, f('stallo')).replace('<select', '<select' + fld('stallo')))}
@@ -272,7 +272,7 @@ Modals.register('dip-pass', {
         ${UI.campo('Ora fine', UI.input({ tipo: 'time', valore: f('a') }).replace('<input', '<input' + fld('a')))}
       </div>
       <div class="code-box"><span style="font-size:22px">🔑</span>
-        <div><div class="code-box-lbl">Codice My2N</div><div class="code-val">${UI.esc(f('codice'))}</div></div>
+        <div><div class="code-box-lbl">Codice di accesso</div><div class="code-val">${UI.esc(f('codice'))}</div></div>
         ${UI.btn('↻ Rigenera', { azione: 'rigenera-codice', stile: 'margin-left:auto' })}
       </div>`;
   },
@@ -313,7 +313,7 @@ Modals.register('add-vis', {
     const fmDefault = S.facilityManager() || {};
     const referenti = State.utentiPiattaforma.map(u => ({ v: u.id, l: u.nomeCompleto + ' (' + S.etichettaRuolo(u.ruolo) + ')' }))
       .concat(State.dipendenti.filter(d => d.inEvidenza && d.stato === 'attivo').map(d => ({ v: d.id, l: d.nomeCompleto })));
-    return UI.alert('Il visitatore riceverà il <strong>codice My2N</strong> via email. Il referente riceverà conferma.', 'info') + `
+    return UI.alert('Il visitatore riceverà il <strong>codice di accesso</strong> via email. Il referente riceverà conferma.', 'info') + `
       <div class="form-grid2">
         ${UI.campo('Nome visitatore', UI.input({ placeholder: 'Nome Cognome' }).replace('<input', '<input' + fld('nome')))}
         ${UI.campo('Email visitatore ✱', UI.input({ tipo: 'email', placeholder: 'email@azienda.com' }).replace('<input', '<input' + fld('email')))}
@@ -325,7 +325,7 @@ Modals.register('add-vis', {
         ${UI.campo('Email referente', UI.input({ tipo: 'email', valore: fmDefault.email || '' }).replace('<input', '<input' + fld('emailReferente')))}
       </div>
       <div class="code-box"><span style="font-size:22px">🔑</span>
-        <div><div class="code-box-lbl">Codice My2N (generato automaticamente)</div>
+        <div><div class="code-box-lbl">Codice di accesso (generato automaticamente)</div>
         <div class="code-val">${UI.esc(f('codice'))}</div>
         <div class="code-box-lbl" style="font-size:10px;margin-top:2px">Valido solo nella fascia oraria selezionata</div></div>
         ${UI.btn('↻ Rigenera', { azione: 'rigenera-codice', stile: 'margin-left:auto' })}
@@ -335,6 +335,17 @@ Modals.register('add-vis', {
 });
 
 Modals.register('vis-det', {
+  size: 'modal-lg',
+  initForm: (c) => {
+    const v = S.visitatore(c.visitatoreId) || {};
+    return {
+      azione: 'notifica',
+      dataInizio: v.data || U.OGGI_ISO,
+      dataFine: v.dataFine || v.data || U.OGGI_ISO,
+      oraInizio: v.oraInizio || '09:00',
+      oraFine: v.oraFine || '18:00'
+    };
+  },
   titolo: (c) => { const v = S.visitatore(c.visitatoreId); return `🪪 ${UI.esc(v ? v.nome : 'Visitatore')}`; },
   body: (c) => {
     const v = S.visitatore(c.visitatoreId);
@@ -348,7 +359,7 @@ Modals.register('vis-det', {
         UI.infoBox('Visitatore', UI.esc(v.nome)),
         UI.infoBox('Azienda', UI.esc(v.azienda)),
         UI.infoBox('Pass', UI.esc(v.passId), true),
-        UI.infoBox('Codice My2N', UI.esc(v.codiceMy2N), true),
+        UI.infoBox('Codice di accesso', UI.esc(v.codiceAccesso), true),
         UI.infoBox('Stallo', UI.esc(v.stalloId || '—')),
         UI.infoBox('Validità', `${UI.esc(v.oraInizio)} – ${UI.esc(v.oraFine)}`, true),
         UI.infoBox('Stato', UI.badge(lbl, col)),
@@ -359,6 +370,15 @@ Modals.register('vis-det', {
           { v: 'riassegna', l: 'Riassegna a stallo corretto in Zona V' },
           { v: 'revoca', l: 'Revoca il pass' }
         ], f('azione', 'notifica')).replace('<select', '<select' + fld('azione'))) : ''}
+      <div class="modal-sec-tit">Periodo di validit\u00e0</div>
+      ${UI.alert('Il periodo si sposta in <strong>entrambe le direzioni</strong>: si pu\u00f2 anticipare l\'inizio per un visitatore in arrivo prima del previsto, non solo posticipare la fine.', 'info')}
+      <div class="form-grid2">
+        ${UI.campo('Data inizio', UI.input({ tipo: 'date', valore: f('dataInizio', v.data) }).replace('<input', '<input' + fld('dataInizio')))}
+        ${UI.campo('Data fine', UI.input({ tipo: 'date', valore: f('dataFine', v.dataFine || v.data) }).replace('<input', '<input' + fld('dataFine')))}
+        ${UI.campo('Ora inizio', UI.input({ tipo: 'time', valore: f('oraInizio', v.oraInizio) }).replace('<input', '<input' + fld('oraInizio')))}
+        ${UI.campo('Ora fine', UI.input({ tipo: 'time', valore: f('oraFine', v.oraFine) }).replace('<input', '<input' + fld('oraFine')))}
+      </div>
+      ${UI.btn('Aggiorna periodo', { azione: 'aggiorna-periodo-pass', params: { visitatoreId: c.visitatoreId }, variante: 'btn-primary', sm: false })}
     `;
   },
   footer: (c) => {
@@ -462,7 +482,7 @@ Modals.register('seg-collegata', {
     const o = S.segnalazione(c.segId) || {};
     return { tipo: o.tipo || 'altro', note: 'Collegata a segnalazione #' + (o.id || '') };
   },
-  titolo: () => '\U0001F6A8 Nuova segnalazione collegata',
+  titolo: () => '🚨 Nuova segnalazione collegata',
   body: (c) => {
     const o = S.segnalazione(c.segId);
     if (!o) return UI.alert('Segnalazione di origine non trovata.', 'danger');
@@ -478,29 +498,57 @@ Modals.register('seg-collegata', {
 });
 
 Modals.register('hw', {
-  titolo: (c) => { const h = S.dispositivo(c.hardwareId); return `⚡ ${UI.esc(h ? h.nome : 'Dispositivo')}`; },
+  titolo: (c) => { const h = S.dispositivo(c.hardwareId); return '⚡ ' + UI.esc(h ? h.label : 'Barriera'); },
   body: (c) => {
     const h = S.dispositivo(c.hardwareId);
-    if (!h) return UI.alert('Dispositivo non trovato.', 'danger');
-    return `
-      ${h.stato === 'anomalia' ? UI.alert(`⚠ ${UI.esc(h.messaggio)}`, 'danger') : UI.alert('✓ Dispositivo operativo, nessuna anomalia rilevata.', 'success')}
-      ${UI.infoGrid([
-        UI.infoBox('Tipo', UI.esc(h.tipo)),
-        UI.infoBox('Ruolo', UI.esc(h.ruolo === 'principale' ? 'Principale' : 'Ausiliario')),
-        UI.infoBox('Indirizzo IP', UI.esc(h.ip), true),
-        UI.infoBox('Firmware', UI.esc(h.firmware), true),
-        UI.infoBox('Cicli oggi', h.cicli),
-        UI.infoBox('Ultimo evento', `<span style="font-size:12px">${UI.esc(h.ultimoEvento)}</span>`)
-      ])}
-      ${h.ticket ? UI.alert(`🎫 Ticket <strong>${UI.esc(h.ticket)}</strong> aperto verso l'assistenza.`, 'info') : ''}
-    `;
+    if (!h) return UI.alert('Barriera non trovata.', 'danger');
+    const z = S.zona(h.zona);
+    /* Il metodo NON e' una proprieta' della barriera: si legge dalla zona che
+       protegge. Mostrarlo qui evita di aprire la Config per capire come la si
+       supera. */
+    const mod = S.modalitaAccessoPerZona().filter(m => m.zonaId === h.zona)[0];
+    return (h.stato === 'anomalia'
+        ? UI.alert('⚠ ' + UI.esc(h.messaggio || h.note || 'Anomalia rilevata.'), 'danger')
+        : UI.alert('✓ Barriera operativa, nessuna anomalia rilevata.', 'success'))
+      + UI.infoGrid([
+        UI.infoBox('Tipo', UI.esc(h.label)),
+        UI.infoBox('Zona protetta', z ? UI.esc(z.nome) : '<span class="muted">Nessuna</span>'),
+        UI.infoBox('Indirizzo IP', UI.esc(h.ip || '—'), true),
+        UI.infoBox('Firmware', UI.esc(h.firmware || '—'), true),
+        UI.infoBox('Cicli oggi', h.cicli || 0),
+        UI.infoBox('Ultimo evento', '<span style="font-size:12px">' + UI.esc(h.ultimoEvento || '—') + '</span>')
+      ])
+      + (mod ? UI.setting('Come si supera', UI.esc(mod.label) + ' · ' + UI.esc(mod.desc), UI.badge(mod.badge, mod.colore)) : '')
+      + (h.note ? UI.setting('Note', UI.esc(h.note), '') : '')
+      + (h.ticket ? UI.alert('🎫 Ticket <strong>' + UI.esc(h.ticket) + '</strong> aperto verso l&rsquo;assistenza.', 'info') : '');
   },
   footer: (c) => {
     const h = S.dispositivo(c.hardwareId);
     return chiudi('Chiudi')
+      + UI.btn('🗑 Rimuovi', { azione: 'rimuovi-barriera', params: { hardwareId: c.hardwareId }, variante: 'btn-danger', sm: false })
       + UI.btn('⬆ Aggiorna firmware', { azione: 'aggiorna-fw', params: { hardwareId: c.hardwareId }, sm: false })
       + (h && h.stato === 'anomalia' ? ok('Apri ticket', 'apri-ticket', { hardwareId: c.hardwareId }) : '');
   }
+});
+
+/* Aggiunta di una barriera: tipo, zona protetta, nota. Il metodo di accesso
+   NON si chiede qui — vive sulla zona, e chiederlo due volte creerebbe due
+   fonti di verita' destinate a divergere. */
+Modals.register('add-barriera', {
+  initForm: () => ({ tipo: 'sbarra', zona: (State.zone[0] || {}).id || '', note: '' }),
+  titolo: () => '🚧 Aggiungi barriera',
+  body: () => {
+    const zonaSel = f('zona', '');
+    const mod = S.modalitaAccessoPerZona().filter(m => m.zonaId === zonaSel)[0];
+    return UI.alert('Il <strong>metodo di accesso</strong> non si imposta qui: appartiene alla zona e si configura in Config &rsaquo; Parcheggio.', 'info')
+      + '<div class="form-grid2">'
+      + UI.campo('Tipo di barriera', UI.select(Object.keys(D.TIPI_BARRIERA).map(k => ({ v: k, l: D.TIPI_BARRIERA[k] })), f('tipo', 'sbarra')).replace('<select', '<select' + fld('tipo')))
+      + UI.campo('Zona protetta', UI.select(State.zone.map(z => ({ v: z.id, l: z.nome })), zonaSel, { azione: 'refresh-modale' }).replace('<select', '<select' + fld('zona')))
+      + '</div>'
+      + (mod ? UI.setting('Metodo attuale della zona', UI.esc(mod.label) + ' · ' + UI.esc(mod.checkIn), UI.badge(mod.badge, mod.colore)) : '')
+      + UI.campo('Note', UI.input({ valore: f('note', ''), placeholder: 'Es. Ingresso carraio lato nord', focusKey: 'barr-note' }).replace('<input', '<input' + fld('note')));
+  },
+  footer: () => chiudi() + ok('Aggiungi barriera', 'crea-barriera')
 });
 
 /* ============================================================================
@@ -547,7 +595,7 @@ Modals.register('add-stallo', {
    PRENOTAZIONI — Nuova prenotazione FM
 ============================================================================ */
 Modals.register('add-bk', {
-  initForm: () => ({ dipendente: '', data: U.OGGI_ISO, tipo: 'ufficio', stallo: '' }),
+  initForm: () => ({ dipendente: '', data: U.OGGI_ISO, tipo: 'ufficio', stallo: '', oraInizio: '09:00', oraFine: '18:00' }),
   titolo: () => '📅 Nuova Prenotazione (FM)',
   body: () => {
     const dips = State.dipendenti.filter(d => d.stato === 'attivo' && d.inEvidenza).map(d => ({ v: d.id, l: d.nomeCompleto }));
@@ -564,6 +612,10 @@ Modals.register('add-bk', {
         ${UI.campo('Tipo', UI.select([{ v: 'ufficio', l: 'In ufficio' }, { v: 'sw', l: 'Smart Working' }], f('tipo'), { azione: 'refresh-modale' }).replace('<select', '<select' + fld('tipo')))}
         ${f('tipo', 'ufficio') === 'ufficio' ? UI.campo('Stallo', UI.select(liberi, f('stallo')).replace('<select', '<select' + fld('stallo'))) : ''}
       </div>
+      ${f('tipo', 'ufficio') === 'ufficio' ? `<div class="form-grid2">
+        ${UI.campo('Ora inizio', UI.input({ tipo: 'time', valore: f('oraInizio', '09:00') }).replace('<input', '<input' + fld('oraInizio')))}
+        ${UI.campo('Ora fine', UI.input({ tipo: 'time', valore: f('oraFine', '18:00') }).replace('<input', '<input' + fld('oraFine')))}
+      </div>` : ''}
       ${f('tipo', 'ufficio') === 'ufficio' && liberi.length === 1 ? UI.alert('Nessuno stallo libero in questa data.', 'danger') : ''}`;
   },
   footer: () => chiudi() + ok('Conferma', 'crea-prenotazione-fm')
@@ -840,9 +892,59 @@ Modals.register('lista-attesa', {
 });
 
 /** Schermata da mostrare al custode quando l'accesso e' manuale. */
+/* ============================================================================
+   DIPENDENTE — dettaglio di una prenotazione
+   Stato, check-in/out (stesso blocco della card, cosi' non divergono),
+   spostamento degli orari e cancellazione, in un posto solo.
+============================================================================ */
+Modals.register('emp-prenot-det', {
+  size: 'modal-lg',
+  initForm: (c) => {
+    const p = S.prenotazioneById(c.prenotazioneId);
+    return { oraInizio: (p && p.oraInizio) || '09:00', oraFine: (p && p.oraFine) || '18:00' };
+  },
+  titolo: (c) => {
+    const p = S.prenotazioneById(c.prenotazioneId);
+    return p ? '📅 ' + UI.esc(U.fmtMedium(U.fromISO(p.data))) : '📅 Prenotazione';
+  },
+  body: (c) => {
+    const p = S.prenotazioneById(c.prenotazioneId);
+    if (!p) return UI.alert('Prenotazione non trovata.', 'danger');
+    const st = S.stallo(p.stalloId);
+    const t = p.turnoId ? S.turno(p.turnoId) : null;
+    const oggi = p.data === U.OGGI_ISO;
+    const blocco = (global.PC.EmpUI && global.PC.EmpUI.bloccoCheckIn) ? global.PC.EmpUI.bloccoCheckIn(p) : '';
+
+    return (oggi ? UI.alert('Prenotazione di <strong>oggi</strong>.', 'info') : '')
+      + UI.infoGrid([
+        UI.infoBox('Stallo', p.tipo === 'ufficio' ? UI.esc(p.stalloId) : 'Smart Working 🏠', true),
+        UI.infoBox('Zona', st ? UI.esc((S.zona(st.zonaId) || {}).nome || st.zonaId) : '—'),
+        UI.infoBox('Piano', st ? UI.esc(st.piano || '—') : '—'),
+        UI.infoBox(t ? 'Turno' : 'Fascia', t ? UI.esc(t.label) : UI.esc((p.oraInizio || '—') + ' – ' + (p.oraFine || '—')))
+      ])
+      + (p.tipo === 'ufficio' ? '<div class="modal-sec-tit">Accesso</div>' + blocco : '')
+      + '<div class="modal-sec-tit">Sposta gli orari</div>'
+      + UI.alert('Puoi <strong>anticipare</strong> o <strong>posticipare</strong> inizio e fine: lo stallo resta il tuo, cambia solo la fascia comunicata al Facility Manager.', 'info')
+      + '<div class="form-grid2">'
+      + UI.campo('Ora inizio', UI.input({ tipo: 'time', valore: f('oraInizio', '09:00'), focusKey: 'pd-oi' }).replace('<input', '<input' + fld('oraInizio')))
+      + UI.campo('Ora fine', UI.input({ tipo: 'time', valore: f('oraFine', '18:00'), focusKey: 'pd-of' }).replace('<input', '<input' + fld('oraFine')))
+      + '</div>'
+      + UI.btn('Aggiorna orari', { azione: 'emp-aggiorna-orari', params: { prenotazioneId: p.id }, variante: 'btn-primary', sm: false });
+  },
+  footer: (c) => {
+    const p = S.prenotazioneById(c.prenotazioneId);
+    return chiudi('Chiudi')
+      /* Da qui si torna alla schermata di prenotazione: e' l'unico modo di
+         cambiare stallo o convertire il giorno in Smart Working senza prima
+         cancellare. Toglierlo aveva reso il passaggio a SW un due-tempi. */
+      + (p ? UI.btn('Modifica giorno', { azione: 'emp-apri-giorno', params: { giornoIso: p.data }, sm: false }) : '')
+      + (p ? UI.btn('Cancella prenotazione', { azione: 'emp-cancella', params: { giornoIso: p.data }, variante: 'btn-danger', sm: false }) : '');
+  }
+});
+
 Modals.register('emp-mostra-prenotazione', {
   size: 'modal-lg',
-  titolo: () => '\U0001F4CB Prenotazione',
+  titolo: () => '📋 Prenotazione',
   body: (c) => {
     const p = State.prenotazioni.find(x => x.id === c.prenotazioneId);
     const d = S.dipendenteCorrente();
@@ -851,7 +953,7 @@ Modals.register('emp-mostra-prenotazione', {
     const t = p.turnoId ? S.turno(p.turnoId) : null;
     return `<div class="pass-custode">
       <div class="pc-logo" style="justify-content:center;margin-bottom:18px">
-        <div class="pc-logo-icon">\U0001F17F</div>
+        <div class="pc-logo-icon">🅿</div>
         <div class="pc-logo-text"><span class="pc-parking">parking</span><span class="pc-cloud">CLOUD</span></div>
       </div>
       <div class="pass-nome">${UI.esc(d.nomeCompleto)}</div>
