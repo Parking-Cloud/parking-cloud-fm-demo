@@ -105,6 +105,34 @@ const UI = {
     return { nomeFile, fogli: fogli.length };
   },
 
+  /** Barra di paginazione condivisa da Prenotazioni, Dipendenti e Accessi.
+      `pag` e' l'oggetto di Selectors.paginaDi(); `azione` il data-act che
+      riceve { pagina }. Max 7 numeri con ellissi: su 16 pagine una riga di
+      pulsanti sarebbe illeggibile. */
+  paginazione(pag, azione, etichetta) {
+    const lbl = etichetta || 'Righe';
+    const info = `<span class="pg-info">${lbl} ${pag.da}–${pag.a} di ${pag.totale}</span>`;
+    if (pag.pagine <= 1) return `<div class="pg-bar">${info}</div>`;
+    const out = [];
+    const push = (i) => out.push(`<span class="pg-num${i === pag.pagina ? ' active' : ''}"${act(azione, { pagina: i })}>${i + 1}</span>`);
+    const n = pag.pagine, c = pag.pagina;
+    if (n <= 7) { for (let i = 0; i < n; i++) push(i); }
+    else {
+      push(0);
+      if (c > 3) out.push('<span class="pg-gap">…</span>');
+      for (let i = Math.max(1, c - 1); i <= Math.min(n - 2, c + 1); i++) push(i);
+      if (c < n - 4) out.push('<span class="pg-gap">…</span>');
+      push(n - 1);
+    }
+    return `<div class="pg-bar">${info}
+      <div class="pg-nums">
+        ${UI.btn('‹', { azione, params: { pagina: c - 1 }, disabled: c === 0 })}
+        ${out.join('')}
+        ${UI.btn('›', { azione, params: { pagina: c + 1 }, disabled: c >= n - 1 })}
+      </div>
+    </div>`;
+  },
+
   /* ---- TOAST ---- */
   toast(msg) {
     const t = document.getElementById('toast-el');

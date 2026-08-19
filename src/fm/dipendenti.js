@@ -7,7 +7,7 @@
 'use strict';
 const { UI, Selectors: S, Actions: A, State, Modals, Domini: D } = global.PC;
 
-const MAX_RIGHE = 40;
+/* Il cap fisso non esiste piu': la tabella e' paginata (S.PER_PAGINA). */
 
 /** Stato mostrato in tabella: prima l'account (invito), poi l'accesso. */
 function statoBadge(d) {
@@ -21,7 +21,10 @@ global.PC.Sezioni.dipendenti = {
     const k = S.kpiDipendenti();
     const q = State.ui.filtri.dipendenti.q;
     const tutti = S.dipendentiFiltrati();
-    const righe = tutti.slice(0, MAX_RIGHE);
+    /* Il filtro agisce PRIMA della paginazione: si pagina il risultato della
+       ricerca, non l'anagrafica intera. */
+    const pag = S.paginaDi(tutti, State.ui.dipendentiPagina);
+    const righe = pag.righe;
     const richieste = State.richiestePass.filter(r => r.stato === 'in_attesa');
 
     const kpi = UI.kpiGrid([
@@ -67,7 +70,7 @@ global.PC.Sezioni.dipendenti = {
     return kpi + banner + UI.card({
       titolo: 'Registro Dipendenti',
       sub: q ? `${tutti.length} risultat${tutti.length === 1 ? 'o' : 'i'} per "${UI.esc(q)}"`
-             : `${tutti.length} autorizzati${tutti.length > MAX_RIGHE ? ` · primi ${MAX_RIGHE} — usa la ricerca per gli altri` : ''}`,
+             : `${tutti.length} autorizzati`,
       azioni: [
         ricerca,
         q ? UI.btn('✕', { azione: 'azzera-cerca-dip', titolo: 'Azzera ricerca' }) : '',
@@ -79,7 +82,7 @@ global.PC.Sezioni.dipendenti = {
         head: ['Nome', 'Dip.', 'Stallo', 'Accesso', 'Caratt.', 'Pass vis.', 'Stato', ''],
         rows,
         vuoto: `Nessun dipendente trovato per "${UI.esc(q)}".`
-      })
+      }) + UI.paginazione(pag, 'pagina-dip', 'Dipendenti')
     });
   }
 };
@@ -87,6 +90,7 @@ global.PC.Sezioni.dipendenti = {
 /* ---- handler ---------------------------------------------------------- */
 UI.onInput('cerca-dip', (d, ev) => A.setFiltroDipendenti({ q: ev.target.value }));
 UI.on('azzera-cerca-dip', () => A.resetFiltri('dipendenti'));
+UI.on('pagina-dip', d => A.setPaginaDipendenti(parseInt(d.pagina, 10)));
 
 UI.on('apri-dip', d => { A.seleziona('dipendenteId', d.dipendenteId); Modals.open('dip-det', { dipendenteId: d.dipendenteId }); });
 UI.on('apri-dip-pass', d => Modals.open('dip-pass', { dipendenteId: d.dipendenteId }));

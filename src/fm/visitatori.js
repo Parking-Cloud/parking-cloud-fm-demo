@@ -97,6 +97,15 @@ UI.on('crea-visitatore', () => {
   UI.toast(`✓ Pass ${v.passId} creato · codice My2N ${v.codiceMy2N} inviato a ${v.email}`);
 });
 
+UI.on('vis-arrivato', d => {
+  const v = A.segnaVisitatoreArrivato(d.visitatoreId);
+  UI.toast(`\u2713 ${v.nome} segnalato come arrivato`);
+});
+UI.on('vis-uscito', d => {
+  const v = A.segnaVisitatoreUscito(d.visitatoreId);
+  UI.toast(`\u23f9 ${v.nome} segnalato come uscito`);
+});
+
 UI.on('revoca-pass', d => {
   const v = A.revocaPass(d.visitatoreId);
   Modals.close();

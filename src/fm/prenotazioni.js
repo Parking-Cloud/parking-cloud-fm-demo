@@ -26,29 +26,7 @@ global.PC.Sezioni.prenotazioni = {
     const chip = q ? `<div class="filtro-chip">Filtro attivo: <strong>${UI.esc(q)}</strong>
         ${UI.btn('✕', { azione: 'azzera-filtro-pren', titolo: 'Azzera filtro' })}</div>` : '';
 
-    /* Paginazione: max 7 numeri con ellissi, altrimenti su 312 dipendenti
-       verrebbe una riga di 16 pulsanti. */
-    const numeri = (() => {
-      const out = [];
-      const n = pag.pagine, c = pag.pagina;
-      const push = (i) => out.push(`<span class="pg-num${i === c ? ' active' : ''}"${UI.act('pagina-pren', { pagina: i })}>${i + 1}</span>`);
-      if (n <= 7) { for (let i = 0; i < n; i++) push(i); return out.join(''); }
-      push(0);
-      if (c > 3) out.push('<span class="pg-gap">…</span>');
-      for (let i = Math.max(1, c - 1); i <= Math.min(n - 2, c + 1); i++) push(i);
-      if (c < n - 4) out.push('<span class="pg-gap">…</span>');
-      push(n - 1);
-      return out.join('');
-    })();
-    const paginazione = pag.pagine > 1 ? `
-      <div class="pg-bar">
-        <span class="pg-info">Dipendenti ${pag.da}–${pag.a} di ${pag.totale}</span>
-        <div class="pg-nums">
-          ${UI.btn('‹', { azione: 'pagina-pren', params: { pagina: pag.pagina - 1 }, disabled: pag.pagina === 0 })}
-          ${numeri}
-          ${UI.btn('›', { azione: 'pagina-pren', params: { pagina: pag.pagina + 1 }, disabled: pag.pagina >= pag.pagine - 1 })}
-        </div>
-      </div>` : `<div class="pg-bar"><span class="pg-info">Dipendenti ${pag.da}–${pag.a} di ${pag.totale}</span></div>`;
+    const paginazione = UI.paginazione(pag, 'pagina-pren', 'Dipendenti');
 
     const kpi = UI.kpiGrid([
       UI.kpi({ label: offset === 0 ? 'Prenotazioni Oggi' : 'Prenotazioni ' + U.fmtDM(giorni[0]), val: k.ufficio, sub: `${k.sw} in Smart Working`, colore: 'blue' }),
@@ -133,7 +111,11 @@ function cella(c, dip) {
   /* violazione: lo stallo prenotato risulta occupato abusivamente */
   const stato = S.statoStallo(p.stalloId, c.iso);
   const viol = stato.stato === 'violazione';
-  return `<div class="bk-slot ${viol ? 's-viol' : 's-book'}"${UI.act('cella-prenota', params)} title="${UI.esc(p.stalloId + (viol ? ' — occupazione abusiva in corso' : ''))}">${UI.esc(p.stalloId)}${viol ? ' ⚠' : ''}</div>`;
+    /* Il pallino dice se la persona e' entrata (verde) o gia' uscita (grigio):
+       la cella da sola direbbe solo che lo stallo era riservato. */
+    const dot = p.checkOutTs ? '<span class="bk-dot bk-dot-out">●</span>'
+      : p.checkInTs ? '<span class="bk-dot bk-dot-in">●</span>' : '';
+  return `<div class="bk-slot ${viol ? 's-viol' : 's-book'}"${UI.act('cella-prenota', params)} title="${UI.esc(p.stalloId + (viol ? ' — occupazione abusiva in corso' : ''))}">${UI.esc(p.stalloId)}${dot}${viol ? ' ⚠' : ''}</div>`;
 }
 
 /* ---- handler ---------------------------------------------------------- */

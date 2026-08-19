@@ -781,6 +781,8 @@ function buildAccessi(prenotazioni, dipendenti, visitatori) {
 
 /* --- 2.6 Segnalazioni -----------------------------------------------------
    3 aperte + 1 in gestione + 18 risolte nel mese (KPI derivati).          */
+/* `dipendenteBloccatoId` collega una segnalazione alla persona che ha fatto
+   bloccare: serve allo sblocco per sapere quale voce chiudere. */
 function buildSegnalazioni(dipendenti) {
   const byNome = (n) => dipendenti.find(d => d.nomeCompleto === n);
   const now = Date.now();
@@ -818,6 +820,24 @@ function buildSegnalazioni(dipendenti) {
       policyOre: null, azione: null, note: []
     }
   ];
+
+  /* Una voce per ogni utente bloccato: e' cio' che lo sblocco chiudera',
+     lasciando in storico chi ha deciso, perche' e per quanto. Senza questo
+     legame il blocco esisterebbe solo sull'anagrafica, e sbloccare non
+     lascerebbe alcuna traccia. */
+  dipendenti.filter(d => d.stato === 'bloccato').forEach(d => {
+    const tipo = d.bloccoTipo === 'durata' ? 'durata' : 'abusivo';
+    const ts = now - 3600000 * 24;
+    out.push({
+      id: nextId('SEG'), tipo, gravita: 'media', stato: 'in_gestione',
+      stalloId: d.stalloId || null, segnalanteId: null, targa: null,
+      dipendenteBloccatoId: d.id,
+      titolo: 'Accesso sospeso — ' + d.nomeCompleto,
+      descrizione: d.bloccoMotivo || 'Accesso sospeso dal Facility Manager.',
+      apertaIlTs: ts, aggiornataIlTs: ts, risoltaIlTs: null,
+      policyOre: null, azione: null, note: [], collegataA: null, prenotazioneId: null
+    });
+  });
 
   /* 18 risolte DENTRO il mese corrente → KPI "Risolte (mese)" sempre = 18 */
   const tipiStorico = ['abusivo', 'durata', 'zona', 'guasto', 'ev'];
@@ -1269,6 +1289,8 @@ const AppState = {
     empWeekOffset: 0,
     empRichiesteTab: 'pass',   // 'pass' | 'segnalazioni'
     prenotazioniPagina: 0,     // pagina della griglia settimanale FM
+    dipendentiPagina: 0,
+    accessiPagina: 0,
     mappaTurnoId: null,        // turno selezionato in Mappa; null = turno corrente
     demoScenario: 'uffici',    // 'uffici' | 'ospedale'
     filtri: {
@@ -1416,6 +1438,18 @@ const S = {
     });
   },
 
+  /** Minuti trascorsi da un check-in ancora aperto; null se non applicabile. */
+  durataPrenotazioneAttiva(prenotazioneId) {
+    const p = AppState.prenotazioni.find(x => x.id === prenotazioneId);
+    if (!p || !p.checkInTs || p.checkOutTs) return null;
+    return Math.max(0, Math.floor((Date.now() - p.checkInTs) / 60000));
+  },
+
+  /** Le segnalazioni aperte come seguito di questa. */
+  segnalazioniCollegate(segId) {
+    return AppState.segnalazioni.filter(s => s.collegataA === segId);
+  },
+
   /** Voci di lista d'attesa per un turno di un giorno, dalla piu' vecchia:
       chi si e' messo in coda prima viene servito prima. */
   listaAttesaPerTurno(turnoId, giornoIso) {
@@ -1435,6 +1469,24 @@ const S = {
     return AppState.listaAttesa
       .filter(v => v.dipendenteId === dipendenteId)
       .sort((a, b) => b.dataRichiesta - a.dataRichiesta);
+  },
+
+  /** Lo stato di un pass e' DERIVATO dal calendario, non memorizzato:
+      prima dell'inizio 'atteso', dentro il range 'dentro', dopo 'scaduto'.
+      Revoca e uscita manuale sono decisioni esplicite e vincono sul calcolo. */
+  statoVisitatore(visitatoreId) {
+    const v = typeof visitatoreId === 'string' ? S.visitatore(visitatoreId) : visitatoreId;
+    if (!v) return 'atteso';
+    /* Le decisioni esplicite del FM vincono sul calendario: revoca, uscita e
+       "arrivato" sono fatti registrati, non deduzioni. Senza `dentro` qui, il
+       pulsante "Segna come arrivato" su un pass futuro non avrebbe effetto
+       visibile: offerto ma inerte. */
+    if (v.stato === 'revocato' || v.stato === 'uscito' || v.stato === 'dentro') return v.stato;
+    const oggi = OGGI_ISO;
+    const dal = v.data, al = v.dataFine || v.data;
+    if (oggi < dal) return 'atteso';
+    if (oggi > al)  return 'scaduto';
+    return v.stato || 'atteso';
   },
 
   /** Il metodo di accesso di uno stallo: quello del varco della sua zona. */
@@ -1849,8 +1901,23 @@ const S = {
       .sort((a, b) => a.data.localeCompare(b.data));
   },
   /** righe della vista settimanale FM: dipendenti in evidenza + eventuale ricerca */
-  /** Quanti dipendenti per pagina nella griglia settimanale FM. */
+  /** Righe per pagina: uguale in Prenotazioni, Dipendenti e Accessi. */
+  PER_PAGINA: 20,
   PER_PAGINA_PRENOTAZIONI: 20,
+
+  /** Taglia una lista sulla pagina richiesta e restituisce i metadati per la
+      barra. La pagina viene riportata dentro i limiti senza toccare lo stato:
+      dopo un filtro puo' puntare oltre la fine. */
+  paginaDi(lista, pagina) {
+    const per = S.PER_PAGINA;
+    const pagine = Math.max(1, Math.ceil(lista.length / per));
+    const p = Math.min(Math.max(0, pagina || 0), pagine - 1);
+    const da = p * per;
+    return {
+      righe: lista.slice(da, da + per), pagina: p, pagine, totale: lista.length,
+      da: lista.length ? da + 1 : 0, a: Math.min(da + per, lista.length)
+    };
+  },
 
   /** Righe della griglia settimanale: TUTTI i dipendenti (filtrati), paginati.
       Prima erano solo i 14 "in evidenza", il che rendeva invisibili gli altri
@@ -1958,18 +2025,26 @@ const S = {
       .filter(a => a.data >= P.dal && a.data <= P.al)
       .slice()
       .sort((a, b) => a.data.localeCompare(b.data) || (a.ingresso || '').localeCompare(b.ingresso || ''))
-      .map(a => ({
-        'Data':         a.data,
-        'Ora ingresso': a.ingresso || '',
-        'Ora uscita':   a.uscita || '',
-        'Persona':      a.personaNome,
-        'Tipo':         tipi[a.tipo] || a.tipo,
-        'Stallo':       a.stalloId || '',
-        /* il metodo lo detta il varco della zona: se il FM lo cambia,
-           l'export riflette la configurazione attuale del parcheggio */
-        'Metodo':       METODO_ACCESSO[a.stalloId ? S.metodoAccessoPerStallo(a.stalloId) : a.metodo] || a.metodo,
-        'Stato':        a.stato
-      }));
+      .map(a => {
+        const st = a.stalloId ? S.stallo(a.stalloId) : null;
+        const z = st ? S.zona(st.zonaId) : null;
+        return {
+          'Data':           a.data,
+          'Ora Ingresso':   a.ingresso || '',
+          'Ora Uscita':     a.uscita || '',
+          'Persona':        a.personaNome,
+          'Tipo':           tipi[a.tipo] || a.tipo,
+          'Stallo':         a.stalloId || '',
+          'Zona':           z ? z.nome : '',
+          /* il metodo lo detta il varco della zona: se il FM lo cambia,
+             l'export riflette la configurazione attuale del parcheggio */
+          'Metodo Accesso': METODO_ACCESSO[a.stalloId ? S.metodoAccessoPerStallo(a.stalloId) : a.metodo] || a.metodo,
+          'Stato':          a.stato,
+          /* vuota finche' la persona e' dentro: una durata "in corso" non e'
+             un dato consuntivo e falserebbe qualsiasi somma */
+          'Durata (min)':   (a.ingresso && a.uscita) ? Math.max(0, S.minutiDa(a.uscita) - S.minutiDa(a.ingresso)) : ''
+        };
+      });
   },
 
   esportaDipendenti() {
@@ -2003,7 +2078,8 @@ const S = {
         'Segnalante':      s.segnalanteId ? S.nomePersona(s.segnalanteId) : 'Rilevazione automatica',
         'Data Apertura':   toISO(new Date(s.apertaIlTs)) + ' ' + hhmm(new Date(s.apertaIlTs)),
         'Data Risoluzione': s.risoltaIlTs ? toISO(new Date(s.risoltaIlTs)) + ' ' + hhmm(new Date(s.risoltaIlTs)) : '',
-        'Azione':          s.azione || ''
+        'Azione':          s.azione || '',
+        'Collegata a':     s.collegataA || ''
       }));
   },
 
@@ -2011,25 +2087,48 @@ const S = {
     return AppState.visitatori.slice()
       .sort((a, b) => a.data.localeCompare(b.data))
       .map(v => ({
-        'ID':        v.id,
-        'Pass':      v.passId,
-        'Nome':      v.nome,
-        'Azienda':   v.azienda,
-        'Email':     v.email,
-        'Stallo':    v.stalloId || '',
-        'Dal':       v.data,
-        'Al':        v.dataFine || v.data,
-        'Ora inizio': v.oraInizio,
-        'Ora fine':  v.oraFine,
-        'Stato':     v.stato
+        'ID':           v.id,
+        'Nome':         v.nome,
+        'Azienda':      v.azienda,
+        'Email':        v.email,
+        'Stallo':       v.stalloId || '',
+        'Data Inizio':  v.data,
+        'Data Fine':    v.dataFine || v.data,
+        'Codice My2N':  v.codiceMy2N || '',
+        'Stato':        S.statoVisitatore(v.id),
+        'Referente':    v.referenteId ? S.nomePersona(v.referenteId) : ''
       }));
+  },
+
+  esportaPrenotazioni() {
+    return AppState.prenotazioni.slice()
+      .sort((a, b) => a.data.localeCompare(b.data))
+      .map(p => {
+        const d = S.dipendente(p.dipendenteId);
+        const st = p.stalloId ? S.stallo(p.stalloId) : null;
+        const z = st ? S.zona(st.zonaId) : null;
+        const dur = (p.checkIn && p.checkOut) ? Math.max(0, S.minutiDa(p.checkOut) - S.minutiDa(p.checkIn)) : '';
+        return {
+          'ID':           p.id,
+          'Data':         p.data,
+          'Dipendente':   d ? d.nomeCompleto : '\u2014',
+          'Dipartimento': d ? d.dipartimento : '',
+          'Stallo':       p.stalloId || '',
+          'Zona':         z ? z.nome : '',
+          'Tipo':         p.tipo === 'sw' ? 'Smart Working' : 'Ufficio',
+          'Stato':        p.stato,
+          'Check-in':     p.checkIn || '',
+          'Check-out':    p.checkOut || '',
+          'Durata (min)': dur
+        };
+      });
   },
 
   /** Le quattro sezioni del Report Completo, gia' pronte per i fogli Excel. */
   esportaCompleto(periodo) {
     return [
       { nome: 'Accessi',      righe: S.esportaAccessi(periodo) },
-      { nome: 'Dipendenti',   righe: S.esportaDipendenti() },
+      { nome: 'Prenotazioni', righe: S.esportaPrenotazioni() },
       { nome: 'Segnalazioni', righe: S.esportaSegnalazioni() },
       { nome: 'Visitatori',   righe: S.esportaVisitatori() }
     ];
@@ -2208,24 +2307,30 @@ const A = {
   seleziona(chiave, id) { AppState.ui.selezione[chiave] = id; Store.emit('selezione'); },
 
   /* ---- filtri (fix DV07/DV17) ---- */
-  setFiltroAccessi(patch)    { Object.assign(AppState.ui.filtri.accessi, patch); Store.emit('filtri'); },
+  setFiltroAccessi(patch) {
+    Object.assign(AppState.ui.filtri.accessi, patch);
+    /* un filtro cambia il numero di righe: restare a pagina 7 su 2 pagine
+       mostrerebbe una tabella vuota senza spiegazione */
+    if (!('aperto' in patch) || Object.keys(patch).length > 1) AppState.ui.accessiPagina = 0;
+    Store.emit('filtri');
+  },
   /** Il filtro dipendente e' UNO SOLO, condiviso da Dipendenti e Prenotazioni:
       cercare in una sezione filtra anche l'altra. Cambiandolo si torna a
       pagina 1, altrimenti si resterebbe su una pagina che non esiste piu'. */
   setFiltroDipendenti(patch) {
     Object.assign(AppState.ui.filtri.dipendenti, patch);
     AppState.ui.prenotazioniPagina = 0;
+    AppState.ui.dipendentiPagina = 0;
     Store.emit('filtri');
     Store.emit('dipendenti');
     Store.emit('prenotazioni');
   },
 
-  setPaginaPrenotazioni(n) {
-    AppState.ui.prenotazioniPagina = Math.max(0, n);
-    Store.emit('prenotazioni');
-  },
+  setPaginaPrenotazioni(n) { AppState.ui.prenotazioniPagina = Math.max(0, n); Store.emit('prenotazioni'); },
+  setPaginaDipendenti(n)   { AppState.ui.dipendentiPagina   = Math.max(0, n); Store.emit('dipendenti'); },
+  setPaginaAccessi(n)      { AppState.ui.accessiPagina      = Math.max(0, n); Store.emit('filtri'); },
   resetFiltri(sezione)       {
-    if (sezione === 'accessi')    AppState.ui.filtri.accessi = { q: '', tipo: '', stato: '', stallo: '', anomalia: false, aperto: AppState.ui.filtri.accessi.aperto };
+    if (sezione === 'accessi')  { AppState.ui.filtri.accessi = { q: '', tipo: '', stato: '', stallo: '', anomalia: false, aperto: AppState.ui.filtri.accessi.aperto }; AppState.ui.accessiPagina = 0; }
     if (sezione === 'dipendenti') { AppState.ui.filtri.dipendenti = { q: '' }; AppState.ui.prenotazioniPagina = 0; }
     Store.emit('filtri');
   },
@@ -2445,7 +2550,21 @@ const A = {
     const d = S.dipendente(id);
     if (!d) return null;
     Object.assign(d, { stato: 'attivo', appAttiva: true, bloccoMotivo: null, bloccoTipo: null, bloccoDal: null, noteSblocco: motivazione, ripristino: durata });
+    /* Lo sblocco deve lasciare traccia: le segnalazioni ancora aperte a carico
+       di questa persona si chiudono con motivazione e durata, e restano nello
+       storico. Senza, l'utente tornava attivo e la segnalazione spariva senza
+       spiegazione. */
+    AppState.segnalazioni.forEach(s => {
+      if (s.segnalanteId !== id && s.dipendenteBloccatoId !== id) return;
+      if (s.stato === 'risolta') return;
+      Object.assign(s, {
+        stato: 'risolta', risoltaIlTs: Date.now(), aggiornataIlTs: Date.now(),
+        azione: 'sblocco_utente',
+        risoltoIl: Date.now(), risoltoConMotivo: motivazione || '', risoltoConDurata: durata || ''
+      });
+    });
     Store.emit('dipendenti');
+    Store.emit('segnalazioni');
     return d;
   },
 
@@ -2482,6 +2601,23 @@ const A = {
     Store.emit('visitatori');
     return v;
   },
+  segnaVisitatoreArrivato(id) {
+    const v = S.visitatore(id);
+    if (!v) return null;
+    v.stato = 'dentro';
+    Store.emit('visitatori');
+    return v;
+  },
+  segnaVisitatoreUscito(id) {
+    const v = S.visitatore(id);
+    if (!v) return null;
+    v.stato = 'uscito';
+    const acc = AppState.accessi.find(a => a.personaId === id && a.uscita === null);
+    if (acc) { acc.uscita = hhmm(new Date()); acc.stato = 'uscito'; }
+    Store.emit('visitatori');
+    return v;
+  },
+
   revocaPass(id) {
     const v = S.visitatore(id);
     if (!v) return null;
@@ -2588,7 +2724,7 @@ const A = {
   },
 
   /* ---- SEGNALAZIONI ---- */
-  creaSegnalazione({ tipo, stalloId, segnalanteId, descrizione, targa }) {
+  creaSegnalazione({ tipo, stalloId, segnalanteId, descrizione, targa, collegataA, prenotazioneId }) {
     const seg = {
       id: nextId('SEG'), tipo: tipo || 'altro',
       gravita: (TIPO_SEGNALAZIONE[tipo] || TIPO_SEGNALAZIONE.altro).gravitaDefault,
@@ -2597,7 +2733,10 @@ const A = {
       titolo: (stalloId ? stalloId + ' — ' : '') + (TIPO_SEGNALAZIONE[tipo] || TIPO_SEGNALAZIONE.altro).label,
       descrizione: descrizione || '',
       apertaIlTs: Date.now(), aggiornataIlTs: Date.now(), risoltaIlTs: null,
-      policyOre: null, azione: null, note: []
+      policyOre: null, azione: null, note: [],
+      /* id della segnalazione di cui questa e' il seguito, se riaperta */
+      collegataA: collegataA || null,
+      prenotazioneId: prenotazioneId || null
     };
     AppState.segnalazioni.unshift(seg);
     const d = S.dipendente(segnalanteId);
@@ -2693,6 +2832,56 @@ const A = {
       esistente e chiusura degli accessi restano in un posto solo. */
   prenotaTurno({ dipendenteId, stalloId, giornoIso, turnoId }) {
     return A.prenota({ dipendenteId, dataISO: giornoIso, tipo: 'ufficio', stalloId, turnoId });
+  },
+
+  /* ---- CHECK-IN / CHECK-OUT ----
+     `checkIn`/`checkOut` restano stringhe 'HH:MM' come nel seed (le legge
+     l'export e il dettaglio dipendente); i timestamp vivono in `checkInTs` /
+     `checkOutTs`, che servono al timer live. Sovrascrivere il formato del seed
+     avrebbe rotto tutto cio' che gia' lo mostra. */
+  registraCheckIn(prenotazioneId, metodo) {
+    const p = AppState.prenotazioni.find(x => x.id === prenotazioneId);
+    if (!p || p.checkInTs) return null;
+    const ora = new Date();
+    p.checkInTs = ora.getTime();
+    p.checkIn = hhmm(ora);
+    p.metodoCheckIn = metodo || 'app';
+    const dip = S.dipendente(p.dipendenteId);
+    /* Il seed puo' avere GIA' un accesso aperto per questa prenotazione (chi
+       era gia' entrato stamattina). Crearne un secondo lascerebbe due righe
+       "dentro" per la stessa persona sullo stesso stallo, e il check-out ne
+       chiuderebbe solo una. Si aggiorna quello esistente. */
+    const aperto = AppState.accessi.find(a => a.prenotazioneId === p.id && a.uscita === null);
+    if (aperto) {
+      aperto.ingresso = p.checkIn;
+      aperto.metodo = metodo === 'badge' ? 'badge2n' : S.metodoAccessoPerStallo(p.stalloId);
+      Store.emit('prenotazioni');
+      Store.emit('accessi');
+      return p;
+    }
+    AppState.accessi.push({
+      id: nextId('ACC'), data: p.data, tipo: 'dipendente',
+      personaId: p.dipendenteId, personaNome: dip ? dip.nomeCompleto : '\u2014',
+      stalloId: p.stalloId, ingresso: p.checkIn, uscita: null,
+      metodo: metodo === 'badge' ? 'badge2n' : S.metodoAccessoPerStallo(p.stalloId),
+      stato: 'dentro', anomalia: null, targa: null, prenotazioneId: p.id
+    });
+    Store.emit('prenotazioni');
+    Store.emit('accessi');
+    return p;
+  },
+
+  registraCheckOut(prenotazioneId, oraForzata) {
+    const p = AppState.prenotazioni.find(x => x.id === prenotazioneId);
+    if (!p || !p.checkInTs || p.checkOutTs) return null;
+    const ora = oraForzata || new Date();
+    p.checkOutTs = ora.getTime();
+    p.checkOut = oraForzata ? '23:59' : hhmm(ora);
+    const acc = AppState.accessi.find(a => a.prenotazioneId === p.id && a.uscita === null);
+    if (acc) { acc.uscita = p.checkOut; acc.stato = 'uscito'; }
+    Store.emit('prenotazioni');
+    Store.emit('accessi');
+    return p;
   },
 
   /* ---- LISTA D'ATTESA (solo modalita' turni) ---- */
@@ -2965,11 +3154,56 @@ const Store = {
 /* ==========================================================================
    EXPORT
 ========================================================================== */
+/* ==========================================================================
+   TIMER DI MANUTENZIONE
+   Tre lavori periodici. Girano solo nel browser: sotto Node (test e build)
+   `setInterval` esiste ma non serve, e lasciarlo attivo terrebbe vivo il
+   processo. Si avviano da PC.avviaTimer(), chiamato dalla shell.
+========================================================================== */
+function avviaTimer() {
+  /* 1. chiusura automatica dei check-in rimasti aperti oltre la mezzanotte */
+  setInterval(() => {
+    let n = 0;
+    AppState.prenotazioni.forEach(p => {
+      if (p.checkInTs && !p.checkOutTs && p.data < OGGI_ISO) {
+        A.registraCheckOut(p.id, true);   // forzata: chiude alle 23:59 del giorno
+        n++;
+      }
+    });
+  }, 60000);
+
+  /* 2. sosta prolungata -> segnalazione automatica, una sola per prenotazione */
+  setInterval(() => {
+    const limite = (AppState.config.prenotazioni.notificaDurataOre || 8) * 60;
+    AppState.prenotazioni.forEach(p => {
+      if (!p.checkInTs || p.checkOutTs) return;
+      const durata = S.durataPrenotazioneAttiva(p.id);
+      if (durata === null || durata <= limite) return;
+      const gia = AppState.segnalazioni.some(s => s.tipo === 'durata' && s.prenotazioneId === p.id);
+      if (gia) return;
+      A.creaSegnalazione({
+        tipo: 'durata', stalloId: p.stalloId, segnalanteId: null,
+        descrizione: `Sosta oltre ${Math.round(limite / 60)}h rilevata automaticamente`,
+        prenotazioneId: p.id
+      });
+    });
+  }, 300000);
+
+  /* 3. lo stato dei pass e' derivato: basta ridisegnare quando cambia giorno
+        o fascia, senza toccare i dati */
+  setInterval(() => {
+    const cambiati = AppState.visitatori.some(v => v.statoCalcolato !== S.statoVisitatore(v));
+    AppState.visitatori.forEach(v => { v.statoCalcolato = S.statoVisitatore(v); });
+    if (cambiati) Store.emit('visitatori');
+  }, 60000);
+}
+
 global.PC = global.PC || {};
 global.PC.State     = AppState;
 global.PC.Selectors = S;
 global.PC.Actions   = A;
 global.PC.Store     = Store;
+global.PC.avviaTimer = avviaTimer;
 global.PC.Utils = {
   DAYS_IT, DAYS_FULL_IT, MONTHS_IT, MONTHS_SHORT,
   OGGI, OGGI_ISO,

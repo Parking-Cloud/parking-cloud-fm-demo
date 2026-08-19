@@ -401,53 +401,26 @@ UI.on('salva-policy', () => {
 
 /* ---- export / periodo ---- */
 UI.on('sel-report', d => { Modals._collect(); Modals.form.report = d.valore; Modals._render(); });
-/* Ogni combinazione tipo x formato produce un file VERO: nel modale non
-   compaiono piu' opzioni che non funzionano (il PDF richiede un backend). */
+/* Un tipo, un foglio (o quattro), un file .xlsx. Nomi file come da specifica. */
 const REPORT = {
-  completo:     { nome: 'Report Completo',           file: 'completo',     fogli: () => S.esportaCompleto() },
-  accessi:      { nome: 'Log Accessi',               file: 'accessi',      fogli: () => [{ nome: 'Accessi', righe: S.esportaAccessi() }] },
-  segnalazioni: { nome: 'Segnalazioni & Violazioni', file: 'segnalazioni', fogli: () => [{ nome: 'Segnalazioni', righe: S.esportaSegnalazioni() }] },
-  dipendenti:   { nome: 'Report Dipendenti',         file: 'dipendenti',   fogli: () => [{ nome: 'Dipendenti', righe: S.esportaDipendenti() }] }
+  accessi:      { file: 'log_accessi',                fogli: () => [{ nome: 'Accessi',      righe: S.esportaAccessi() }] },
+  prenotazioni: { file: 'prenotazioni',               fogli: () => [{ nome: 'Prenotazioni', righe: S.esportaPrenotazioni() }] },
+  segnalazioni: { file: 'segnalazioni',               fogli: () => [{ nome: 'Segnalazioni', righe: S.esportaSegnalazioni() }] },
+  visitatori:   { file: 'visitatori',                 fogli: () => [{ nome: 'Visitatori',   righe: S.esportaVisitatori() }] },
+  completo:     { file: 'parkingcloud_report_completo', fogli: () => S.esportaCompleto() }
 };
 
 UI.on('genera-export', () => {
   Modals._collect();
-  const { report, formato } = Modals.form;
-  const def = REPORT[report] || REPORT.completo;
+  const def = REPORT[Modals.form.report] || REPORT.completo;
   const fogli = def.fogli();
   const totale = fogli.reduce((n, f) => n + f.righe.length, 0);
-  const base = 'parkingcloud_' + def.file + '_' + U.OGGI_ISO;
   Modals.close();
-
-  if (formato === 'CSV') {
-    /* Il CSV e' un file solo: piu' sezioni si concatenano con un'intestazione
-       per blocco, altrimenti le colonne diverse si sovrapporrebbero. */
-    const testo = fogli.length === 1
-      ? U.toCSV(fogli[0].righe)
-      : fogli.map(f => '### ' + f.nome + '\r\n' + U.toCSV(f.righe)).join('\r\n\r\n');
-    /* BOM: senza, Excel interpreta male gli accenti */
-    const esito = UI.scarica(base + '.csv', '﻿' + testo, 'text/csv');
-    UI.toast(`⬇ ${esito.nomeFile} · ${totale} record`);
-    return;
-  }
-
-  if (formato === 'JSON') {
-    const dati = fogli.length === 1
-      ? fogli[0].righe
-      : fogli.reduce((o, f) => { o[f.nome.toLowerCase()] = f.righe; return o; }, {});
-    const esito = UI.scarica(base + '.json', JSON.stringify(dati, null, 2), 'application/json');
-    UI.toast(`⬇ ${esito.nomeFile} · ${totale} record`);
-    return;
-  }
-
-  /* Excel */
-  const esito = UI.toXLSX(base + '.xlsx', fogli);
-  if (!esito) {
-    UI.toast('⚠ Libreria Excel non disponibile offline · usa CSV o JSON');
-    return;
-  }
-  UI.toast(`⬇ ${esito.nomeFile} · ${esito.fogli} fogli${esito.fogli > 1 ? '' : ''} · ${totale} record`);
+  const esito = UI.toXLSX(def.file + '_' + U.OGGI_ISO + '.xlsx', fogli);
+  if (!esito) { UI.toast('\u26a0 Libreria Excel non disponibile offline'); return; }
+  UI.toast(`\u2b07 ${esito.nomeFile} \u00b7 ${esito.fogli} foglio${esito.fogli > 1 ? 'i' : ''} \u00b7 ${totale} record`);
 });
+
 UI.on('set-periodo', d => { A.setPeriodo(d.valore); Modals.close(); UI.toast('Periodo: ' + State.config.periodo.label); });
 UI.on('applica-periodo', () => {
   Modals._collect();

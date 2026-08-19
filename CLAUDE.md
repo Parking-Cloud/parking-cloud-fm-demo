@@ -47,7 +47,7 @@ Dopo ogni blocco, esegui e riporta i risultati con ✅ ❌ ⚠️.
 > iterazione, altrimenti ottieni falsi ❌.
 
 #### LOGIN E NAVIGAZIONE
-- [ ] Login `admin@parkingcloud.eu` → console FM con badge Admin
+- [ ] Login `admin@parkingcloud.eu` → console FM con badge Admin **nel topbar in alto a destra** (dal CODE-19; prima era nel footer sidebar)
 - [ ] Login `manager@demo.parkingcloud.eu` → console FM senza Amministrazione
 - [ ] Login `dipendente@demo.parkingcloud.eu` → vista Dipendente
 - [ ] Tutte le voci sidebar cliccabili e caricano la sezione corretta

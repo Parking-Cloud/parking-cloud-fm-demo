@@ -108,6 +108,18 @@ UI.on('conferma-seg', d => {
 
 UI.on('apri-sblocco', d => Modals.open('sblocco', { dipendenteId: d.dipendenteId }));
 
+UI.on('apri-collegata', d => {
+  const orig = S.segnalazione(d.segId);
+  if (!orig) return;
+  const nuova = A.creaSegnalazione({
+    tipo: orig.tipo, stalloId: orig.stalloId, segnalanteId: orig.segnalanteId,
+    descrizione: `Collegata a segnalazione #${orig.id}`,
+    targa: orig.targa, collegataA: orig.id
+  });
+  Modals.open('seg', { segId: nuova.id });
+  UI.toast(`\u{1F6A8} Nuova segnalazione ${nuova.id} collegata a ${orig.id}`);
+});
+
 UI.on('conferma-sblocco', d => {
   Modals._collect();
   const dip = A.sbloccaDipendente(d.dipendenteId, { motivazione: Modals.form.motivazione, durata: Modals.form.durata });

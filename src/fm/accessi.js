@@ -45,10 +45,10 @@ global.PC.Sezioni.accessi = {
         </div>
       </div>` : '';
 
-    /* il cap serve solo sui periodi lunghi: su un singolo giorno il log
-       dev'essere completo */
-    const MAX_RIGHE_LOG = k.multi ? 150 : righe.length;
-    const mostrate = righe.slice(0, MAX_RIGHE_LOG);
+    /* I filtri agiscono PRIMA della paginazione: si pagina il risultato
+       filtrato. Il vecchio cap a 150 righe e' sostituito dalle pagine. */
+    const pag = S.paginaDi(righe, State.ui.accessiPagina);
+    const mostrate = pag.righe;
     const rows = mostrate.map(a => {
       const [lbl, col] = TAG_TIPO[a.tipo];
       const statoBadge = a.stato === 'abusivo' ? UI.badge('Abusivo', 'red')
@@ -68,12 +68,12 @@ global.PC.Sezioni.accessi = {
 
     /* con un periodo lungo il log può superare il migliaio di righe: si mostra
        una finestra, dichiarando quante ne restano fuori */
-    const MAX = MAX_RIGHE_LOG;
+    /* il cap non esiste piu': lo sostituiscono le pagine */
     return kpi + pannello + UI.card({
       titolo: 'Log Accessi',
       sub: (attivi ? `${righe.length} di ${State.accessi.length} record · filtri attivi`
                    : `${righe.length} record · ${UI.esc(per.label.toLowerCase())}`)
-           + (righe.length > MAX ? ` · mostrati i primi ${MAX}` : ''),
+           + (pag.pagine > 1 ? ` · pagina ${pag.pagina + 1} di ${pag.pagine}` : ''),
       azioni: [
         UI.btn((filtri.aperto ? '▲' : '🔍') + ' Filtra', { azione: 'toggle-filtri-acc', variante: attivi ? 'btn-primary' : 'btn-ghost' }),
         UI.btn('⤓ CSV', { azione: 'apri-modale', params: { modale: 'export' } })
@@ -82,12 +82,13 @@ global.PC.Sezioni.accessi = {
         head: ['Persona', 'Tipo', 'Stallo', 'Ingresso', 'Uscita', 'Metodo', 'Stato'],
         rows: rows,
         vuoto: 'Nessun accesso corrisponde ai filtri impostati.'
-      })
+      }) + UI.paginazione(pag, 'pagina-acc', 'Accessi')
     });
   }
 };
 
 /* ---- handler ---------------------------------------------------------- */
+UI.on('pagina-acc', d => A.setPaginaAccessi(parseInt(d.pagina, 10)));
 UI.on('toggle-filtri-acc', () => A.setFiltroAccessi({ aperto: !State.ui.filtri.accessi.aperto }));
 UI.on('reset-filtri-acc',  () => { A.resetFiltri('accessi'); A.setFiltroAccessi({ aperto: true }); });
 UI.onInput('filtro-acc-q',      (d, ev) => A.setFiltroAccessi({ q: ev.target.value }));

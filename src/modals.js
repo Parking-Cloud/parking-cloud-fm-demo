@@ -363,7 +363,13 @@ Modals.register('vis-det', {
   },
   footer: (c) => {
     const v = S.visitatore(c.visitatoreId);
-    return UI.btn('Revoca', { azione: 'revoca-pass', params: { visitatoreId: c.visitatoreId }, variante: 'btn-danger', sm: false })
+    const stato = S.statoVisitatore(c.visitatoreId);
+    return (stato === 'atteso'
+        ? UI.btn('\u2713 Segna come arrivato', { azione: 'vis-arrivato', params: { visitatoreId: c.visitatoreId }, variante: 'btn-success', sm: false })
+        : stato === 'dentro'
+          ? UI.btn('\u23f9 Segna come uscito', { azione: 'vis-uscito', params: { visitatoreId: c.visitatoreId }, sm: false })
+          : '')
+      + UI.btn('Revoca', { azione: 'revoca-pass', params: { visitatoreId: c.visitatoreId }, variante: 'btn-danger', sm: false })
       + chiudi('Chiudi')
       + (v && v.zonaErrata ? UI.btn('Applica azione', { azione: 'risolvi-zona-errata', params: { visitatoreId: c.visitatoreId }, variante: 'btn-primary', sm: false }) : '')
       + ok('Estendi (+2h)', 'estendi-pass', { visitatoreId: c.visitatoreId });
@@ -382,6 +388,19 @@ Modals.register('seg', {
     if (!seg) return UI.alert('Segnalazione non trovata.', 'danger');
     const segnalante = S.dipendente(seg.segnalanteId);
     const alt = S.assegnaStalloAutomatico(seg.segnalanteId, U.OGGI_ISO);
+    const collegate = S.segnalazioniCollegate(seg.id);
+    const origine = seg.collegataA ? S.segnalazione(seg.collegataA) : null;
+    /* Storico: chi ha chiuso, perche' e con quale durata. Una segnalazione
+       risolta senza motivazione non spiega nulla a chi la rilegge dopo. */
+    const storico = (seg.stato === 'risolta' ? UI.alert(
+        `\u2713 <strong>Risolta</strong>${seg.azione === 'sblocco_utente' ? ' \u00b7 Utente sbloccato' : ''}`
+        + (seg.risoltoConMotivo ? `<br>Motivazione: ${UI.esc(seg.risoltoConMotivo)}` : '')
+        + (seg.risoltoConDurata ? `<br>Ripristino: ${UI.esc(seg.risoltoConDurata)}` : '')
+        + (seg.risoltaIlTs ? `<br><span class="muted">Chiusa il ${UI.esc(U.fmtMedium(new Date(seg.risoltaIlTs)))} alle ${UI.esc(U.hhmm(new Date(seg.risoltaIlTs)))}</span>` : ''),
+        'success') : '')
+      + (origine ? UI.alert(`Seguito della segnalazione <strong>${UI.esc(origine.id)}</strong> \u00b7 ${UI.esc(origine.titolo)}`, 'info') : '')
+      + (collegate.length ? UI.alert('Segnalazioni collegate: '
+          + collegate.map(c => `<strong>${UI.esc(c.id)}</strong> \u00b7 ${UI.esc(c.stato)}`).join(' \u2014 '), 'info') : '');
 
     const opzioni = {
       abusivo: [
@@ -402,7 +421,7 @@ Modals.register('seg', {
       { v: 'rinvia_notifica', icona: '📢', titolo: 'Notifica il team tecnico', sub: 'Apri un intervento di manutenzione' }
     ];
 
-    return `
+    return storico + `
       ${UI.alert(UI.esc(seg.descrizione), seg.gravita === 'urgente' ? 'danger' : 'warn')}
       ${UI.infoGrid([
         UI.infoBox('Stallo', UI.esc(seg.stalloId || '—')),
@@ -418,6 +437,12 @@ Modals.register('seg', {
   },
   footer: (c) => {
     const seg = S.segnalazione(c.segId);
+    /* Una segnalazione chiusa non si riapre: se il problema si ripresenta si
+       apre una NUOVA voce collegata, cosi' lo storico resta leggibile. */
+    if (seg && seg.stato === 'risolta') {
+      return chiudi('Chiudi') + UI.btn('Apri segnalazione collegata', {
+        azione: 'apri-collegata', params: { segId: seg.id }, variante: 'btn-primary', sm: false });
+    }
     return chiudi() + UI.btn('Conferma azione', {
       azione: 'conferma-seg', params: { segId: c.segId },
       variante: seg && seg.gravita === 'urgente' ? 'btn-danger' : 'btn-primary', sm: false
@@ -544,25 +569,24 @@ Modals.register('policy', {
 ============================================================================ */
 Modals.register('export', {
   size: 'modal-lg',
-  initForm: () => ({ report: 'completo', formato: 'CSV', email: State.config.export.destinatario }),
+  initForm: () => ({ report: 'completo' }),
   titolo: () => '⤓ Esporta Report',
   body: () => {
+    /* Un formato solo: l'unico che la demo genera davvero senza backend.
+       Un dropdown con tre voci equivalenti era una scelta senza contenuto. */
     const tipi = [
-      { v: 'completo', icona: '📊', titolo: 'Report Completo', sub: 'Accessi, prenotazioni, segnalazioni, hardware' },
-      { v: 'accessi', icona: '⇆', titolo: 'Log Accessi', sub: `${S.kpiAccessi().ingressi} record nel periodo selezionato` },
-      { v: 'segnalazioni', icona: '🚨', titolo: 'Segnalazioni & Violazioni', sub: `${S.kpiSegnalazioni().aperte + S.kpiSegnalazioni().inGestione} aperte · ${S.kpiSegnalazioni().risolteMese} risolte` },
-      { v: 'dipendenti', icona: '👥', titolo: 'Report Dipendenti', sub: `${S.kpiDipendenti().autorizzati} autorizzati` }
+      { v: 'accessi',      icona: '⇆',  titolo: 'Log Accessi',               sub: `${S.esportaAccessi().length} record nel periodo selezionato` },
+      { v: 'prenotazioni', icona: '📅', titolo: 'Prenotazioni',              sub: `${S.esportaPrenotazioni().length} prenotazioni` },
+      { v: 'segnalazioni', icona: '🚨', titolo: 'Segnalazioni & Violazioni', sub: `${S.esportaSegnalazioni().length} totali` },
+      { v: 'visitatori',   icona: '🪪', titolo: 'Visitatori',                sub: `${S.esportaVisitatori().length} pass` },
+      { v: 'completo',     icona: '📊', titolo: 'Report Completo',           sub: '4 fogli: Accessi · Prenotazioni · Segnalazioni · Visitatori' }
     ];
     return tipi.map(t => UI.opt({ icona: t.icona, titolo: t.titolo, sub: t.sub, sel: f('report', 'completo') === t.v, azione: 'sel-report', params: { valore: t.v } })).join('')
       + '<div class="sep"></div>'
-      + `<div class="form-grid2">
-        ${UI.campo('Periodo', `<div class="periodo-box">${UI.esc(State.config.periodo.label)}</div>`)}
-        ${UI.campo('Formato', UI.select(['CSV', 'Excel (.xlsx)', 'JSON'], f('formato')).replace('<select', '<select' + fld('formato')))}
-      </div>
-      <div class="form-hint">Export PDF disponibile nella versione con backend</div>`
-      + UI.campo('Invia a', UI.input({ tipo: 'email', valore: f('email') }).replace('<input', '<input' + fld('email')));
+      + UI.campo('Periodo', `<div class="periodo-box">${UI.esc(State.config.periodo.label)}</div>`)
+      + `<div class="form-hint">Formato <strong>Excel (.xlsx)</strong>. Export PDF disponibile nella versione con backend.</div>`;
   },
-  footer: () => chiudi() + ok('Genera ed Esporta', 'genera-export')
+  footer: () => chiudi() + ok('⤓ Scarica Excel', 'genera-export')
 });
 
 Modals.register('daterange', {
@@ -787,6 +811,32 @@ Modals.register('lista-attesa', {
         }),
         vuoto: 'Nessuno in lista d\'attesa.'
       });
+  },
+  footer: () => chiudi('Chiudi')
+});
+
+/** Schermata da mostrare al custode quando l'accesso e' manuale. */
+Modals.register('emp-mostra-prenotazione', {
+  size: 'modal-lg',
+  titolo: () => '\U0001F4CB Prenotazione',
+  body: (c) => {
+    const p = State.prenotazioni.find(x => x.id === c.prenotazioneId);
+    const d = S.dipendenteCorrente();
+    if (!p || !d) return UI.alert('Prenotazione non trovata.', 'danger');
+    const st = p.stalloId ? S.stallo(p.stalloId) : null;
+    const t = p.turnoId ? S.turno(p.turnoId) : null;
+    return `<div class="pass-custode">
+      <div class="pc-logo" style="justify-content:center;margin-bottom:18px">
+        <div class="pc-logo-icon">\U0001F17F</div>
+        <div class="pc-logo-text"><span class="pc-parking">parking</span><span class="pc-cloud">CLOUD</span></div>
+      </div>
+      <div class="pass-nome">${UI.esc(d.nomeCompleto)}</div>
+      <div class="pass-stallo">Stallo: <strong>${UI.esc(p.stalloId || '\u2014')}</strong>${st ? ' \u00b7 ' + UI.esc(st.piano) : ''}</div>
+      <div class="pass-data">Data: ${UI.esc(U.fmtMedium(U.fromISO(p.data)))}${t ? ' \u00b7 ' + UI.esc(t.label) + ' ' + UI.esc(t.inizio) + '\u2013' + UI.esc(t.fine) : ''}</div>
+      <div class="pass-id mono">Prenotazione #${UI.esc(p.id)}</div>
+      <div style="margin:16px 0">${UI.badge(p.checkOutTs ? 'Prenotazione conclusa' : 'Prenotazione attiva', p.checkOutTs ? 'gray' : 'green', !p.checkOutTs)}</div>
+      <div class="pass-nota">Mostra questo schermo al custode per l'accesso manuale</div>
+    </div>`;
   },
   footer: () => chiudi('Chiudi')
 });

@@ -146,7 +146,20 @@ global.PC.Sezioni.dipendenteView = {
               <div class="mbc-meta">${U.DAYS_FULL_IT[d.getDay()]} · ${p.tipo === 'ufficio' ? UI.esc((S.stallo(p.stalloId) || {}).piano || '') + ' · check-in via app' : 'nessuno stallo necessario'}</div>
             </div>
             <div class="mbc-actions">
-              ${p.tipo === 'ufficio' ? UI.badge('Prenotato', 'blue') : UI.badge('Smart W.', 'amber')}
+              ${p.tipo !== 'ufficio' ? UI.badge('Smart W.', 'amber')
+                : p.checkOutTs
+                  ? UI.badge('\u2713 Completato \u00b7 ' + U.fmtMinuti(Math.max(0, p.checkOutTs - p.checkInTs)), 'gray')
+                  : p.checkInTs
+                    ? UI.badge('\u2713 Dentro \u00b7 ' + UI.esc(p.checkIn) + ' \u00b7 via ' + UI.esc(p.metodoCheckIn === 'badge' ? 'badge' : 'app'), 'green', true)
+                    : UI.badge('Prenotato', 'blue')}
+              ${p.tipo === 'ufficio' && p.checkInTs && !p.checkOutTs
+                ? `<span class="mbc-timer">\u23f1 ${U.fmtMinuti((S.durataPrenotazioneAttiva(p.id) || 0) * 60000)}</span>`
+                  + UI.btn('\u23f9 Check-out', { azione: 'emp-checkout', params: { prenotazioneId: p.id }, variante: 'btn-danger' })
+                : ''}
+              ${p.tipo === 'ufficio' && !p.checkInTs ? `
+                ${UI.btn('\u25b6 Check-in App', { azione: 'emp-checkin', params: { prenotazioneId: p.id, metodo: 'app' }, variante: 'btn-primary' })}
+                ${UI.btn('\U0001FAAA Badge', { azione: 'emp-checkin', params: { prenotazioneId: p.id, metodo: 'badge' } })}
+                ${UI.btn('\U0001F4CB Mostra prenotazione', { azione: 'apri-modale', params: { modale: 'emp-mostra-prenotazione', prenotazioneId: p.id } })}` : ''}
               ${UI.btn('Cancella', { azione: 'emp-apri-cancella', params: { giornoIso: p.data } })}
             </div>
           </div>`;
@@ -354,6 +367,28 @@ UI.on('emp-sel-tipo', d => { Modals._collect(); Modals.form.tipo = d.valore; Mod
 /* selezione del turno: stesso schema di emp-sel-tipo, il re-render ricalcola
    lo stallo assegnato perche' la disponibilita' dipende dal turno */
 UI.on('emp-sel-turno', d => { Modals._collect(); Modals.form.turnoId = d.turnoId; Modals._render(); });
+
+UI.on('emp-checkin', d => {
+  const p = A.registraCheckIn(d.prenotazioneId, d.metodo);
+  if (!p) { UI.toast('Check-in gia\' registrato'); return; }
+  UI.toast(`\u2713 Check-in ${p.checkIn} \u00b7 stallo ${p.stalloId} \u00b7 via ${d.metodo === 'badge' ? 'badge' : 'app'}`);
+});
+
+UI.on('emp-checkout', d => {
+  const p = A.registraCheckOut(d.prenotazioneId);
+  if (!p) return;
+  UI.toast(`\u23f9 Check-out ${p.checkOut} \u00b7 durata ${U.fmtMinuti(Math.max(0, p.checkOutTs - p.checkInTs))}`);
+});
+
+/* Il timer nella card e' testo statico: senza un ridisegno periodico
+   resterebbe fermo al minuto del check-in. */
+setInterval(() => {
+  if (State.ui.vista !== 'dipendente') return;
+  const d = S.dipendenteCorrente();
+  if (!d) return;
+  const attive = State.prenotazioni.some(p => p.dipendenteId === d.id && p.checkInTs && !p.checkOutTs);
+  if (attive) PC.Store.emit('timer');
+}, 60000);
 
 UI.on('emp-rifiuta-attesa', () => { Modals._collect(); Modals.form.turnoId = ''; Modals._render(); });
 

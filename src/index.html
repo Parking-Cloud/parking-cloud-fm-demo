@@ -131,8 +131,8 @@ const NAV = [
     { id: 'mappa',        ico: '🗺', label: 'Mappa Stalli', perm: 'mappa' },
     { id: 'accessi',      ico: '⇆',  label: 'Accessi',      badge: 'accessi',     colore: 'nb-red', perm: 'accessi' },
     { id: 'prenotazioni', ico: '📅', label: 'Prenotazioni', perm: 'prenotazioni' },
-    { id: 'analytics',    ico: '📊', label: 'Analytics', perm: 'analytics' },
-    { id: 'segnalazioni', ico: '🚨', label: 'Segnalazioni', badge: 'segnalazioni', colore: 'nb-red', perm: 'segnalazioni' }
+    { id: 'segnalazioni', ico: '🚨', label: 'Segnalazioni', badge: 'segnalazioni', colore: 'nb-red', perm: 'segnalazioni' },
+    { id: 'analytics',    ico: '📊', label: 'Analytics', perm: 'analytics' }
   ]},
   { gruppo: 'Persone',      voci: [
     { id: 'dipendenti',   ico: '👥', label: 'Dipendenti',   badge: 'dipendenti',  colore: 'nb-amber', perm: 'dipendenti' },
@@ -153,8 +153,8 @@ const NAV = [
 
 const TABS = [
   ['dashboard', '◉ Live'], ['mappa', '🗺 Mappa'], ['accessi', '⇆ Accessi'],
-  ['prenotazioni', '📅 Prenotazioni'], ['analytics', '📊 Analytics'],
-  ['segnalazioni', '🚨 Segnalazioni'],
+  ['prenotazioni', '📅 Prenotazioni'], ['segnalazioni', '🚨 Segnalazioni'],
+  ['analytics', '📊 Analytics'],
   ['dipendenti', '👥 Dipendenti'], ['visitatori', '🪪 Visitatori'],
   ['hardware', '⚡ 2N'], ['config', '⚙ Config'],
   ['amministrazione', '⚙ Amministrazione']   // filtrata dai permessi: solo Admin
@@ -194,17 +194,25 @@ function renderSidebar() {
           <span class="ico">${v.ico}</span>${v.label}${n ? `<span class="nbadge ${v.colore}">${n}</span>` : ''}</div>`;
       }).join(''); }).join('')}
     </nav>
-    <div class="sb-footer">
-      <div class="sb-user">
-        ${UI.avatar(utente.iniziali || '?')}
-        <div style="min-width:0">
-          <div class="sb-uname">${UI.esc(utente.nomeCompleto || '—')}</div>
-          <div class="sb-urole">${isAdmin
-            ? '<span class="role-badge role-badge-admin">Admin</span>'
-            : UI.esc(S.etichettaRuolo(ruolo))}</div>
-        </div>
-        <div class="sb-logout" data-act="logout" title="Esci">⏻</div>
+    `);
+  /* Identita' e logout stanno in alto a destra nel topbar, nella stessa
+     posizione della Vista Dipendente: prima erano in fondo alla sidebar e le
+     due viste si comportavano in modo diverso. */
+  renderIdentita(utente, ruolo, isAdmin);
+}
+
+/* ---- IDENTITA' IN TOPBAR (FM/Admin) ---- */
+function renderIdentita(utente, ruolo, isAdmin) {
+  UI.mount('#fm-identita', `
+    <div class="tb-user">
+      <div style="text-align:right;min-width:0">
+        <div class="tb-uname">${UI.esc(utente.nomeCompleto || '—')}</div>
+        <div class="tb-urole">${isAdmin
+          ? '<span class="role-badge role-badge-admin">Admin</span>'
+          : UI.esc(S.etichettaRuolo(ruolo))}</div>
       </div>
+      ${UI.avatar(utente.iniziali || '?')}
+      <div class="sb-logout" data-act="logout" title="Esci">⏻</div>
     </div>`);
 }
 
@@ -223,7 +231,10 @@ function renderTopbar() {
       ${UI.btn('⤓', { azione: 'apri-modale', params: { modale: 'export' }, sm: false, stile: 'padding:7px 10px' })}
       ${UI.btn('🪪 + Pass Visitatore', { azione: 'apri-modale', params: { modale: 'add-vis' }, variante: 'btn-cyan' })}
       ${UI.btn('+ Aggiungi', { azione: 'apri-modale', params: { modale: 'add-user' }, variante: 'btn-primary' })}
+      <div id="fm-identita"></div>
     </div>`);
+  /* il topbar viene ridisegnato per intero: l'identita' va rimontata dopo */
+  if (S.utenteCorrente()) renderIdentita(S.utenteCorrente(), State.ui.ruolo, State.ui.ruolo === 'admin');
 }
 
 function renderTabs() {
@@ -307,6 +318,9 @@ UI.on('conferma-attivazione', () => {
 document.getElementById('login-sede').textContent = State.config.sede.descrizione;
 global.PC.Store.subscribe(render);
 render();
+/* I timer di manutenzione partono una volta sola, dopo il primo render:
+   check-out di mezzanotte, segnalazione sosta prolungata, stato pass. */
+if (global.PC.avviaTimer) global.PC.avviaTimer();
 
 })(window);
 </script>

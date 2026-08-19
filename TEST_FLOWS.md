@@ -418,6 +418,36 @@ stato incoerente. È l'origine di CODE-03.
 - **Verifica:** 20 righe/pagina su 312; pagina 2 dopo cambio settimana; filtro
   in una sezione visibile nell'altra; chip di reset
 
+## F29 — Check-in / check-out dipendente (CODE-19)
+
+- **Sorgente:** `employee/index.js`, `modals.js -> emp-mostra-prenotazione`, `fm/prenotazioni.js`
+- **Actions:** `registraCheckIn(id, metodo)`, `registraCheckOut(id, forzata)`
+- **Selectors:** `durataPrenotazioneAttiva(id)`
+- **Da sapere:**
+  - `checkIn`/`checkOut` restano **stringhe 'HH:MM'** (le legge il seed, l'export
+    e il dettaglio dipendente). I timestamp vivono in `checkInTs`/`checkOutTs`.
+  - `registraCheckIn()` **riusa** l'accesso gia' aperto per quella prenotazione:
+    il seed ne ha uno per le prenotazioni di oggi, e crearne un secondo lascia
+    due righe "dentro" per la stessa persona.
+  - `U.fmtMinuti()` prende **millisecondi**, non minuti.
+  - I timer stanno in `PC.avviaTimer()`, chiamato una volta dopo il primo
+    render. Non devono partire sotto Node: terrebbero vivo il processo.
+- **Verifica:** tre pulsanti sul giorno prenotato; modale custode con nome,
+  stallo, data e id; dot verde poi grigio nella griglia FM; Smart Working senza
+  check-in
+
+## F30 — Stato del pass visitatore (CODE-19)
+
+- **Sorgente:** `state.js -> statoVisitatore()`, `modals.js -> vis-det`, `fm/visitatori.js`
+- **Da sapere:**
+  - Lo stato e' **derivato** dal range del pass, non memorizzato. Ma revoca,
+    uscita e "arrivato" sono decisioni esplicite del FM e **vincono sul
+    calendario**: se il controllo sulla data viene prima, il pulsante "Segna
+    come arrivato" su un pass futuro risulta offerto ma inerte.
+  - L'export legge lo stato dal selector, non dal campo grezzo.
+- **Verifica:** futuro -> atteso; oggi -> atteso/dentro; passato -> scaduto;
+  revocato e uscito restano tali
+
 ## F12 — Login Admin → accesso Amministrazione
 
 - **Sorgente:** `index.html` (router), `fm/amministrazione.js`

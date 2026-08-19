@@ -68,6 +68,93 @@ Generati da PRNG con seed fisso `20260817`: **stabili a ogni reload**.
 
 ## STORICO MODIFICHE
 
+## [19/08/2026] — CODE-19 · Ordine, paginazione, export Excel, check-in, stato pass
+
+### A — Analytics dopo Segnalazioni
+Riordinate sidebar e tab orizzontali: Analytics passa dalla 5ª alla 6ª
+posizione, dopo Segnalazioni.
+
+### B — Avatar e logout in alto a destra, in entrambe le viste
+Il blocco identità è uscito dal footer della sidebar ed è ora nel topbar, nella
+stessa posizione della Vista Dipendente. **Il badge "Admin" si trova ora nel
+topbar, non più nel footer sidebar**: la voce corrispondente della checklist in
+CLAUDE.md è stata aggiornata.
+
+### C — Paginazione in Dipendenti e Accessi
+- Nuovo helper condiviso: `Selectors.paginaDi(lista, pagina)` +
+  `UI.paginazione(pag, azione, etichetta)`. Prenotazioni è stato **rifattorizzato**
+  per usarlo, così le tre sezioni si comportano identicamente.
+- `ui.dipendentiPagina` e `ui.accessiPagina` sopravvivono al cambio sezione.
+- I filtri agiscono **prima** della paginazione e la azzerano: restare a pagina 7
+  su 2 pagine mostrerebbe una tabella vuota senza spiegazione.
+- **Rimossi i vecchi cap**: Dipendenti si fermava a 40 righe, Accessi a 150 sui
+  periodi lunghi. Ora si raggiunge tutto.
+
+### D — Export: solo Excel, 5 tipi
+- Via il dropdown formato (CSV/JSON/PDF): un solo formato reale, pulsante
+  "⤓ Scarica Excel".
+- Tipi: Log Accessi · **Prenotazioni (nuovo)** · Segnalazioni & Violazioni ·
+  **Visitatori (era "Hardware")** · Report Completo (4 fogli).
+- Colonne come da specifica, incluse **Zona** e **Durata (min)** negli accessi,
+  `Collegata a` nelle segnalazioni, `Codice My2N` e `Referente` nei visitatori.
+- Nomi file: `log_accessi_[data].xlsx`, `prenotazioni_…`, `segnalazioni_…`,
+  `visitatori_…`, `parkingcloud_report_completo_…`.
+
+### E — Storico sblocco e segnalazioni collegate
+- `sbloccaDipendente()` chiude la segnalazione dell'utente con
+  `risoltoIl`, `risoltoConMotivo`, `risoltoConDurata` e `azione: 'sblocco_utente'`.
+  Nel modale compare "✓ Risolta · Utente sbloccato" con motivazione e durata.
+- `creaSegnalazione()` accetta `collegataA`: una segnalazione chiusa non si
+  riapre, se ne apre una **nuova collegata**. L'originale elenca le collegate,
+  la nuova rimanda all'originale.
+- **Il seed non collegava gli utenti bloccati ad alcuna segnalazione**: senza
+  quel legame lo sblocco non aveva nulla da chiudere. Aggiunta una voce per
+  ciascun bloccato (`dipendenteBloccatoId`) — segnalazioni 22 → 24.
+
+### F — Check-in / check-out dipendente
+- `registraCheckIn(id, metodo)` e `registraCheckOut(id)`; `checkInTs`/`checkOutTs`
+  affiancano `checkIn`/`checkOut`, che **restano stringhe 'HH:MM' come nel seed**:
+  cambiarne il formato avrebbe rotto export e dettagli che già le mostrano.
+- Tre vie d'accesso nella card del giorno: **Check-in App**, **Badge**,
+  **Mostra prenotazione** (modale `emp-mostra-prenotazione` da mostrare al
+  custode). Dopo il check-in: "✓ Dentro · ora · via metodo", timer live e
+  Check-out. Smart Working non ha check-in.
+- Dot nella griglia FM: verde se entrato, grigio se uscito.
+- Tre timer in `PC.avviaTimer()`: check-out automatico dopo la mezzanotte (60s),
+  segnalazione automatica per sosta oltre `notificaDurataOre` (5 min), ricalcolo
+  stato pass (60s). Partono dopo il primo render, mai sotto Node.
+
+### G — Stato visitatore derivato
+`statoVisitatore()` calcola atteso/dentro/scaduto dal range del pass; revoca,
+uscita e "arrivato" sono **decisioni esplicite che vincono sul calendario**.
+Nel modale `vis-det` compaiono "✓ Segna come arrivato" o "⏹ Segna come uscito"
+a seconda dello stato.
+
+### Difetti reali trovati dai test
+- **Check-in duplicava l'accesso.** Il seed ha già un accesso aperto per la
+  prenotazione di oggi: creandone un secondo restavano due righe "dentro" per la
+  stessa persona sullo stesso stallo, e il check-out ne chiudeva solo una. Ora
+  il check-in **riusa** l'accesso aperto.
+- **"Segna come arrivato" era inerte sui pass futuri.** Il controllo sulla data
+  precedeva quello sullo stato manuale: il pulsante veniva offerto ma non
+  cambiava nulla. Ora la decisione esplicita vince.
+- **`fmtMinuti()` riceve millisecondi, non minuti**: le tre chiamate nuove
+  passavano minuti e mostravano "0min" sempre.
+
+### Flussi verificati
+- **TEST A 21/21 ✅** — checklist completa, nessun downgrade
+- **TEST B 3/3** — Analytics in 6ª posizione, avatar+logout in topbar in
+  entrambe le viste
+- **TEST C 6/6** — 20 righe in Dipendenti e Accessi, pagine, filtri che
+  riducono e azzerano, pagina che sopravvive al cambio sezione
+- **TEST D 6/6** — 5 tipi, niente dropdown formato, "Visitatori" al posto di
+  "Hardware", intestazioni e nomi file esatti, Report Completo con 4 fogli
+- **TEST E 4/4** — sblocco che chiude con motivazione e durata, storico leggibile
+- **TEST F 5/5** — collegamento nei due sensi e in export
+- **TEST G 8/8** — tre pulsanti, modale custode, check-in senza duplicati,
+  dot verde e grigio, durata in export, Smart Working senza check-in
+- **TEST H 6/6** — atteso / dentro / scaduto / revocato, azioni manuali del FM
+
 ## [19/08/2026] — CODE-18 · Metodo accesso per zona, export reali, paginazione
 
 ### MODIFICA A — Il metodo di accesso appartiene alla zona, non alla persona
