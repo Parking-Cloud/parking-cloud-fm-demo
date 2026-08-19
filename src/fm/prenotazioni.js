@@ -14,8 +14,41 @@ global.PC.Sezioni.prenotazioni = {
     const offset = State.ui.fmWeekOffset;
     const k = S.kpiPrenotazioni(isoGiorni.includes(U.OGGI_ISO) ? U.OGGI_ISO : isoGiorni[0]);
     const finestra = State.config.prenotazioni.finestraGiorniLavorativi;
-    const righe = S.righeSettimanaFM();
+    const pag = S.righeSettimanaFM();
+    const righe = pag.righe;
     const q = State.ui.filtri.dipendenti.q;
+
+    /* Stessa ricerca della sezione Dipendenti, stesso stato: filtrare qui
+       filtra anche li'. */
+    const ricerca = `<input class="form-input" style="width:230px;padding:6px 11px;font-size:12px"
+        placeholder="🔍 Cerca dipendente…" value="${UI.esc(q)}"
+        data-act="cerca-dip-pren" data-focus-key="pren-q">`;
+    const chip = q ? `<div class="filtro-chip">Filtro attivo: <strong>${UI.esc(q)}</strong>
+        ${UI.btn('✕', { azione: 'azzera-filtro-pren', titolo: 'Azzera filtro' })}</div>` : '';
+
+    /* Paginazione: max 7 numeri con ellissi, altrimenti su 312 dipendenti
+       verrebbe una riga di 16 pulsanti. */
+    const numeri = (() => {
+      const out = [];
+      const n = pag.pagine, c = pag.pagina;
+      const push = (i) => out.push(`<span class="pg-num${i === c ? ' active' : ''}"${UI.act('pagina-pren', { pagina: i })}>${i + 1}</span>`);
+      if (n <= 7) { for (let i = 0; i < n; i++) push(i); return out.join(''); }
+      push(0);
+      if (c > 3) out.push('<span class="pg-gap">…</span>');
+      for (let i = Math.max(1, c - 1); i <= Math.min(n - 2, c + 1); i++) push(i);
+      if (c < n - 4) out.push('<span class="pg-gap">…</span>');
+      push(n - 1);
+      return out.join('');
+    })();
+    const paginazione = pag.pagine > 1 ? `
+      <div class="pg-bar">
+        <span class="pg-info">Dipendenti ${pag.da}–${pag.a} di ${pag.totale}</span>
+        <div class="pg-nums">
+          ${UI.btn('‹', { azione: 'pagina-pren', params: { pagina: pag.pagina - 1 }, disabled: pag.pagina === 0 })}
+          ${numeri}
+          ${UI.btn('›', { azione: 'pagina-pren', params: { pagina: pag.pagina + 1 }, disabled: pag.pagina >= pag.pagine - 1 })}
+        </div>
+      </div>` : `<div class="pg-bar"><span class="pg-info">Dipendenti ${pag.da}–${pag.a} di ${pag.totale}</span></div>`;
 
     const kpi = UI.kpiGrid([
       UI.kpi({ label: offset === 0 ? 'Prenotazioni Oggi' : 'Prenotazioni ' + U.fmtDM(giorni[0]), val: k.ufficio, sub: `${k.sw} in Smart Working`, colore: 'blue' }),
@@ -63,15 +96,16 @@ global.PC.Sezioni.prenotazioni = {
       + UI.alert(`📅 Finestra di prenotazione: <strong>${finestra} giorni lavorativi</strong> (oggi incluso) — modificabile in <a data-act="nav" data-sezione="config" style="color:inherit;text-decoration:underline;cursor:pointer">Config → Policy</a>`, 'info')
       + UI.card({
           titolo: 'Vista Settimanale',
-          sub: UI.esc(titolo) + (q ? ` · ricerca "${UI.esc(q)}"` : ' · dipendenti in evidenza'),
+          sub: UI.esc(titolo) + (q ? ` · ${pag.totale} risultat${pag.totale === 1 ? 'o' : 'i'} per "${UI.esc(q)}"` : ` · ${pag.totale} dipendenti`),
           azioni: [
+            ricerca,
             UI.btn('‹', { azione: 'week-fm', params: { delta: -1 }, titolo: 'Settimana precedente' }),
             UI.btn('Oggi', { azione: 'week-fm', params: { delta: 0 }, disabled: offset === 0 }),
             UI.btn('›', { azione: 'week-fm', params: { delta: 1 }, titolo: 'Settimana successiva' }),
             UI.btn('⤓', { azione: 'apri-modale', params: { modale: 'export' } }),
             UI.btn('+ Prenota', { azione: 'apri-modale', params: { modale: 'add-bk' }, variante: 'btn-primary' })
           ],
-          body: righe.length ? griglia : UI.vuoto('Nessun dipendente corrisponde alla ricerca.')
+          body: chip + (righe.length ? griglia + paginazione : UI.vuoto('Nessun dipendente corrisponde alla ricerca.'))
         })
       + capacita;
   }
@@ -107,6 +141,10 @@ UI.on('week-fm', d => {
   const delta = parseInt(d.delta, 10);
   if (delta === 0) { State.ui.fmWeekOffset = 0; A.fmWeek(0); } else A.fmWeek(delta);
 });
+
+UI.onInput('cerca-dip-pren', (d, ev) => A.setFiltroDipendenti({ q: ev.target.value }));
+UI.on('azzera-filtro-pren', () => A.resetFiltri('dipendenti'));
+UI.on('pagina-pren', d => A.setPaginaPrenotazioni(parseInt(d.pagina, 10)));
 
 UI.on('cella-prenota', d => {
   Modals.open('add-bk', {});

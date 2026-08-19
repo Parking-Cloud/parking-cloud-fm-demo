@@ -171,7 +171,7 @@ Modals.register('acc-det', {
    DIPENDENTI — Dettaglio   [fix DV18: mostra il dipendente cliccato]
 ============================================================================ */
 Modals.register('dip-det', {
-  initForm: (c) => { const d = S.dipendente(c.dipendenteId) || {}; return { metodo: d.metodoAccesso, caratteristica: d.caratteristica }; },
+  initForm: (c) => { const d = S.dipendente(c.dipendenteId) || {}; return { caratteristica: d.caratteristica }; },
   titolo: (c) => { const d = S.dipendente(c.dipendenteId); return `👤 ${UI.esc(d ? d.nomeCompleto : '—')}`; },
   body: (c) => {
     const d = S.dipendente(c.dipendenteId);
@@ -187,7 +187,18 @@ Modals.register('dip-det', {
         UI.infoBox('No-show', `<span style="color:var(--${d.noShow ? 'amber' : 'green'})">${d.noShow}</span>`),
         UI.infoBox('Segnalazioni fatte', d.segnalazioniFatte)
       ])}
-      ${UI.setting('Metodo accesso', '', UI.select([{ v: 'app2n', l: 'App + 2N' }, { v: 'app', l: 'Solo App' }, { v: 'sospeso', l: 'Sospeso' }], f('metodo'), { stile: 'width:160px' }).replace('<select', '<select' + fld('metodo')))}
+      ${(() => {
+        /* Non e' piu' un attributo modificabile della persona: si eredita dal
+           varco della zona. Mostrarlo come dropdown suggerirebbe che si possa
+           dare a un singolo dipendente un metodo diverso dai colleghi che
+           parcheggiano nello stesso posto. */
+        const o = S.origineMetodoAccesso(d.id);
+        return UI.setting('Metodo accesso',
+          o.origine === 'pool rotante'
+            ? 'Nessuno stallo fisso: accesso via app'
+            : 'Ereditato dal varco della zona, non modificabile per singolo dipendente',
+          `<span class="metodo-eredita">${UI.esc(o.label)} <span class="muted">· ${UI.esc(o.origine)}</span></span>`);
+      })()}
       ${UI.setting('Caratteristiche', '', UI.select([{ v: 'standard', l: 'Standard' }, { v: 'ev', l: 'EV ⚡' }, { v: 'disabili', l: 'Disabili ♿' }], f('caratteristica'), { stile: 'width:160px' }).replace('<select', '<select' + fld('caratteristica')))}
       ${UI.setting('Può richiedere pass visitatore', 'Il dipendente può inoltrare una richiesta di pass; l\'approvazione resta al FM',
         UI.toggle('toggle-pass-dip', d.puoRichiederePass, { dipendenteId: d.id }))}
@@ -533,7 +544,7 @@ Modals.register('policy', {
 ============================================================================ */
 Modals.register('export', {
   size: 'modal-lg',
-  initForm: () => ({ report: 'completo', formato: 'PDF', email: State.config.export.destinatario }),
+  initForm: () => ({ report: 'completo', formato: 'CSV', email: State.config.export.destinatario }),
   titolo: () => '⤓ Esporta Report',
   body: () => {
     const tipi = [
@@ -546,8 +557,9 @@ Modals.register('export', {
       + '<div class="sep"></div>'
       + `<div class="form-grid2">
         ${UI.campo('Periodo', `<div class="periodo-box">${UI.esc(State.config.periodo.label)}</div>`)}
-        ${UI.campo('Formato', UI.select(['PDF', 'Excel (.xlsx)', 'CSV', 'JSON'], f('formato')).replace('<select', '<select' + fld('formato')))}
-      </div>`
+        ${UI.campo('Formato', UI.select(['CSV', 'Excel (.xlsx)', 'JSON'], f('formato')).replace('<select', '<select' + fld('formato')))}
+      </div>
+      <div class="form-hint">Export PDF disponibile nella versione con backend</div>`
       + UI.campo('Invia a', UI.input({ tipo: 'email', valore: f('email') }).replace('<input', '<input' + fld('email')));
   },
   footer: () => chiudi() + ok('Genera ed Esporta', 'genera-export')

@@ -52,7 +52,9 @@ def main():
 
     kb = out.stat().st_size / 1024
     print(f'OK  {out}  ({kb:.0f} KB)  {datetime.date.today()}')
-    rimasti = re.findall(r'<script src="[^"]+"></script>|<link[^>]+styles\.css', html)
+    # le URL assolute restano esterne per forza (CDN): il controllo serve a
+    # scovare i file LOCALI dimenticati, non a vietare le dipendenze remote
+    rimasti = re.findall(r'<script src="(?!https?://)[^"]+"></script>|<link[^>]+styles\.css', html)
     if rimasti:
         print('  ATTENZIONE, riferimenti esterni residui:', rimasti)
 

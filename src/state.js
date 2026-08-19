@@ -272,14 +272,21 @@ const SEDE = {
    40+48+36+16+6+8 = 154 nell'AS-IS, ma la sede è dichiarata a 156 posti.
    Incoerenza risolta portando la Zona A a 42 → totale esattamente 156.
    Il KPI "Posti Totali" è comunque derivato da stalli.length.            */
+/* Il metodo di accesso e' un attributo della ZONA, non della persona:
+   dipende dal varco fisico installato li'. Zona B ha il cancello 2N (PIN),
+   la EV il lettore QR, e cosi' via. */
 const ZONE_SEED = [
-  { id: 'A',  nome: 'Zona A — Piano -1',        piano: 'Piano -1', posti: 42, tipoDefault: 'standard',   colore: 'gold',   note: '' },
-  { id: 'B',  nome: 'Zona B — Piano -1 (2N)',   piano: 'Piano -1', posti: 48, tipoDefault: 'standard',   colore: 'gold',   note: 'Accesso cancello 2N' },
-  { id: 'C',  nome: 'Zona C — Piano -2',        piano: 'Piano -2', posti: 36, tipoDefault: 'standard',   colore: 'gold',   note: '' },
-  { id: 'V',  nome: 'Zona V — Visitatori',      piano: 'Piano -1', posti: 16, tipoDefault: 'visitatori', colore: 'purple', note: 'Riservata pass temporanei' },
-  { id: 'EV', nome: 'Zona EV ⚡',               piano: 'Piano -1', posti:  6, tipoDefault: 'ev',         colore: 'sky',    note: 'Colonnine 22 kW' },
-  { id: 'H',  nome: 'Zona H — ♿ Disabili',      piano: 'Piano -1', posti:  8, tipoDefault: 'disabili',   colore: 'blue',   note: '' }
+  { id: 'A',  nome: 'Zona A — Piano -1',        piano: 'Piano -1', posti: 42, tipoDefault: 'standard',   colore: 'gold',   metodoAccesso: 'app', note: '' },
+  { id: 'B',  nome: 'Zona B — Piano -1 (2N)',   piano: 'Piano -1', posti: 48, tipoDefault: 'standard',   colore: 'gold',   metodoAccesso: 'pin', note: 'Accesso cancello 2N' },
+  { id: 'C',  nome: 'Zona C — Piano -2',        piano: 'Piano -2', posti: 36, tipoDefault: 'standard',   colore: 'gold',   metodoAccesso: 'app', note: '' },
+  { id: 'V',  nome: 'Zona V — Visitatori',      piano: 'Piano -1', posti: 16, tipoDefault: 'visitatori', colore: 'purple', metodoAccesso: 'pin', note: 'Riservata pass temporanei · codice My2N' },
+  { id: 'EV', nome: 'Zona EV ⚡',               piano: 'Piano -1', posti:  6, tipoDefault: 'ev',         colore: 'sky',    metodoAccesso: 'qr',  note: 'Colonnine 22 kW' },
+  { id: 'H',  nome: 'Zona H — ♿ Disabili',      piano: 'Piano -1', posti:  8, tipoDefault: 'disabili',   colore: 'blue',   metodoAccesso: 'app', note: '' }
 ];
+
+/* Metodi assegnabili a una zona dalla Config. Sottoinsieme di METODO_ACCESSO:
+   badge/pass/app2n sono stati storici, non varchi configurabili. */
+const METODI_ZONA = ['app', 'pin', 'qr', 'bluetooth', 'targa'];
 
 /* Stalli fuori servizio nel seed (mostrano il colore "manutenzione" in mappa) */
 const STALLI_MANUTENZIONE = ['C-35', 'C-36'];
@@ -358,7 +365,6 @@ function buildDipendenti(stalli) {
       stalloId: s.stallo || null,
       poolRotante: !s.stallo && !s.bloccato,
       caratteristica: s.caratt,
-      metodoAccesso: s.bloccato ? 'sospeso' : 'app2n',
       appAttiva: !s.bloccato,
       stato: s.bloccato ? 'bloccato' : 'attivo',
       bloccoMotivo: s.bloccato ? s.bloccato.motivo : null,
@@ -400,7 +406,6 @@ function buildDipendenti(stalli) {
       stalloId,
       poolRotante: !stalloId,
       caratteristica: 'standard',
-      metodoAccesso: 'app2n',
       appAttiva: true,
       stato: 'attivo',
       bloccoMotivo: null, bloccoTipo: null, bloccoDal: null,
@@ -417,7 +422,7 @@ function buildDipendenti(stalli) {
   /* Allinea il conteggio "App attiva" al KPI dichiarato */
   const attivi = out.filter(d => d.stato === 'attivo');
   for (let i = attivi.length - 1, spente = attivi.length - N_APP_ATTIVA; spente > 0 && i >= 0; i--) {
-    if (attivi[i].appAttiva && !attivi[i].inEvidenza) { attivi[i].appAttiva = false; attivi[i].metodoAccesso = 'app'; spente--; }
+    if (attivi[i].appAttiva && !attivi[i].inEvidenza) { attivi[i].appAttiva = false; spente--; }
   }
 
   /* Ribalta il titolare sullo stallo (relazione bidirezionale coerente) */
@@ -666,6 +671,14 @@ function buildVisitatori(dipendenti) {
    Derivati dalle prenotazioni: ogni prenotazione attiva/completata di oggi
    genera il relativo record di accesso. Così i KPI Accessi e i KPI Mappa
    raccontano gli stessi numeri.                                           */
+/** Metodo di accesso della zona di uno stallo, usabile durante il SEED:
+    i Selectors non esistono ancora quando i builder girano. */
+function metodoZona(stalloId) {
+  if (!stalloId) return 'app';
+  const z = ZONE_SEED.find(x => stalloId.indexOf(x.id + '-') === 0);
+  return (z && z.metodoAccesso) || 'app';
+}
+
 function buildAccessi(prenotazioni, dipendenti, visitatori) {
   const out = [];
   const byId = new Map(dipendenti.map(d => [d.id, d]));
@@ -685,10 +698,8 @@ function buildAccessi(prenotazioni, dipendenti, visitatori) {
       stalloId: p.stalloId,
       ingresso: p.checkIn || minutesToHHMM(rInt(7 * 60 + 40, 10 * 60 + 20)),
       uscita: dentro ? null : (p.checkOut || minutesToHHMM(rInt(13 * 60, 17 * 60))),
-      /* zona B passa dal cancello 2N (PIN); altrove app o QR alternati */
-      metodo: !dip.appAttiva ? 'badge2n'
-            : (p.stalloId && p.stalloId.startsWith('B')) ? 'pin'
-            : (out.length % 2 === 0 ? 'app' : 'qr'),
+      /* il metodo lo detta il varco della zona, non la persona */
+      metodo: metodoZona(p.stalloId),
       stato: dentro ? 'dentro' : 'uscito',
       anomalia: null,
       targa: null,
@@ -1021,7 +1032,6 @@ function buildDipendentiOspedale(stalli) {
         stalloId,
         poolRotante: !stalloId,
         caratteristica: 'standard',
-        metodoAccesso: 'app2n',
         appAttiva: true,
         stato: 'attivo',
         bloccoMotivo: null, bloccoTipo: null, bloccoDal: null,
@@ -1136,7 +1146,7 @@ function buildAccessiOspedale(prenotazioni, dipendenti, turni) {
         stalloId: p.stalloId,
         ingresso: minutesToHHMM((inizio + rInt(2, 35)) % 1440),
         uscita: corrente ? null : minutesToHHMM(fine),
-        metodo: (p.stalloId.startsWith('B')) ? 'pin' : (out.length % 2 === 0 ? 'app' : 'qr'),
+        metodo: metodoZona(p.stalloId),
         stato: corrente ? 'dentro' : 'uscito',
         anomalia: null,
         targa: null,
@@ -1258,6 +1268,7 @@ const AppState = {
     fmWeekOffset: 0,
     empWeekOffset: 0,
     empRichiesteTab: 'pass',   // 'pass' | 'segnalazioni'
+    prenotazioniPagina: 0,     // pagina della griglia settimanale FM
     mappaTurnoId: null,        // turno selezionato in Mappa; null = turno corrente
     demoScenario: 'uffici',    // 'uffici' | 'ospedale'
     filtri: {
@@ -1424,6 +1435,32 @@ const S = {
     return AppState.listaAttesa
       .filter(v => v.dipendenteId === dipendenteId)
       .sort((a, b) => b.dataRichiesta - a.dataRichiesta);
+  },
+
+  /** Il metodo di accesso di uno stallo: quello del varco della sua zona. */
+  metodoAccessoPerStallo(stalloId) {
+    const st = S.stallo(stalloId);
+    if (!st) return 'app';
+    const z = S.zona(st.zonaId);
+    return (z && z.metodoAccesso) || 'app';
+  },
+
+  /** Il metodo di accesso di un dipendente: ereditato dallo stallo fisso.
+      Chi e' su pool rotante non ha una zona propria e usa l'app. */
+  metodoAccessoPerDipendente(dipendenteId) {
+    const d = S.dipendente(dipendenteId);
+    if (!d || !d.stalloId) return 'app';
+    return S.metodoAccessoPerStallo(d.stalloId);
+  },
+
+  /** Etichetta leggibile + zona di provenienza, per le viste di dettaglio. */
+  origineMetodoAccesso(dipendenteId) {
+    const d = S.dipendente(dipendenteId);
+    if (!d || !d.stalloId) return { metodo: 'app', label: METODO_ACCESSO.app, origine: 'pool rotante' };
+    const st = S.stallo(d.stalloId);
+    const z = st ? S.zona(st.zonaId) : null;
+    const m = S.metodoAccessoPerStallo(d.stalloId);
+    return { metodo: m, label: METODO_ACCESSO[m] || m, origine: z ? z.nome : '—' };
   },
 
   /** Quante volte lo stesso stallo puo' essere usato in 24h.
@@ -1812,12 +1849,24 @@ const S = {
       .sort((a, b) => a.data.localeCompare(b.data));
   },
   /** righe della vista settimanale FM: dipendenti in evidenza + eventuale ricerca */
+  /** Quanti dipendenti per pagina nella griglia settimanale FM. */
+  PER_PAGINA_PRENOTAZIONI: 20,
+
+  /** Righe della griglia settimanale: TUTTI i dipendenti (filtrati), paginati.
+      Prima erano solo i 14 "in evidenza", il che rendeva invisibili gli altri
+      298. La paginazione e il filtro sono indipendenti dalla settimana. */
   righeSettimanaFM() {
     const giorni = S.settimanaFM().map(toISO);
-    return S.dipendentiFiltrati()
-      .filter(d => d.inEvidenza || AppState.ui.filtri.dipendenti.q)
-      .slice(0, 14)
+    const tutti = S.dipendentiFiltrati();
+    const per = S.PER_PAGINA_PRENOTAZIONI;
+    const pagine = Math.max(1, Math.ceil(tutti.length / per));
+    /* la pagina puo' essere rimasta oltre la fine dopo un filtro: si riporta
+       dentro senza toccare lo stato, che appartiene alle Actions */
+    const pagina = Math.min(AppState.ui.prenotazioniPagina || 0, pagine - 1);
+    const da = pagina * per;
+    const righe = tutti.slice(da, da + per)
       .map(d => ({ dipendente: d, celle: giorni.map(iso => ({ iso, prenotazione: S.prenotazione(d.id, iso) })) }));
+    return { righe, pagina, pagine, totale: tutti.length, da: tutti.length ? da + 1 : 0, a: Math.min(da + per, tutti.length) };
   },
 
   /** I giorni lavorativi prenotabili, oggi incluso (10 per default). */
@@ -1916,21 +1965,74 @@ const S = {
         'Persona':      a.personaNome,
         'Tipo':         tipi[a.tipo] || a.tipo,
         'Stallo':       a.stalloId || '',
-        'Metodo':       METODO_ACCESSO[a.metodo] || a.metodo,
+        /* il metodo lo detta il varco della zona: se il FM lo cambia,
+           l'export riflette la configurazione attuale del parcheggio */
+        'Metodo':       METODO_ACCESSO[a.stalloId ? S.metodoAccessoPerStallo(a.stalloId) : a.metodo] || a.metodo,
         'Stato':        a.stato
       }));
   },
 
   esportaDipendenti() {
-    return AppState.dipendenti.map(d => ({
-      id:            d.id,
-      nomeCompleto:  d.nomeCompleto,
-      dipartimento:  d.dipartimento,
-      stalloId:      d.stalloId,
-      metodoAccesso: d.metodoAccesso,
-      stato:         d.stato,
-      accessiMese:   d.accessiMese
-    }));
+    return AppState.dipendenti.map(d => {
+      const st = d.stalloId ? S.stallo(d.stalloId) : null;
+      const z  = st ? S.zona(st.zonaId) : null;
+      return {
+        'ID':             d.id,
+        'Nome':           d.nome,
+        'Cognome':        d.cognome,
+        'Dipartimento':   d.dipartimento,
+        'Stallo':         d.stalloId || '',
+        'Zona':           z ? z.nome : 'Pool rotante',
+        'Metodo Accesso': METODO_ACCESSO[S.metodoAccessoPerDipendente(d.id)] || '',
+        'Stato':          d.stato,
+        'Accessi Mese':   d.accessiMese
+      };
+    });
+  },
+
+  esportaSegnalazioni() {
+    const g = { urgente: 'Urgente', media: 'Media', bassa: 'Bassa' };
+    return AppState.segnalazioni.slice()
+      .sort((a, b) => b.apertaIlTs - a.apertaIlTs)
+      .map(s => ({
+        'ID':              s.id,
+        'Tipo':            (TIPO_SEGNALAZIONE[s.tipo] || {}).label || s.tipo,
+        'Gravita':         g[s.gravita] || s.gravita,
+        'Stato':           s.stato,
+        'Stallo':          s.stalloId || '',
+        'Segnalante':      s.segnalanteId ? S.nomePersona(s.segnalanteId) : 'Rilevazione automatica',
+        'Data Apertura':   toISO(new Date(s.apertaIlTs)) + ' ' + hhmm(new Date(s.apertaIlTs)),
+        'Data Risoluzione': s.risoltaIlTs ? toISO(new Date(s.risoltaIlTs)) + ' ' + hhmm(new Date(s.risoltaIlTs)) : '',
+        'Azione':          s.azione || ''
+      }));
+  },
+
+  esportaVisitatori() {
+    return AppState.visitatori.slice()
+      .sort((a, b) => a.data.localeCompare(b.data))
+      .map(v => ({
+        'ID':        v.id,
+        'Pass':      v.passId,
+        'Nome':      v.nome,
+        'Azienda':   v.azienda,
+        'Email':     v.email,
+        'Stallo':    v.stalloId || '',
+        'Dal':       v.data,
+        'Al':        v.dataFine || v.data,
+        'Ora inizio': v.oraInizio,
+        'Ora fine':  v.oraFine,
+        'Stato':     v.stato
+      }));
+  },
+
+  /** Le quattro sezioni del Report Completo, gia' pronte per i fogli Excel. */
+  esportaCompleto(periodo) {
+    return [
+      { nome: 'Accessi',      righe: S.esportaAccessi(periodo) },
+      { nome: 'Dipendenti',   righe: S.esportaDipendenti() },
+      { nome: 'Segnalazioni', righe: S.esportaSegnalazioni() },
+      { nome: 'Visitatori',   righe: S.esportaVisitatori() }
+    ];
   },
 
   /** Cosa succederebbe portando il totale posti a `target`, SENZA applicarlo.
@@ -2028,7 +2130,7 @@ const A = {
     const target = u || d;
     if (!target) return { errore: 'Utente non trovato' };
     target.statoAccount = 'attivo';
-    if (d) { d.stato = 'attivo'; d.appAttiva = true; d.metodoAccesso = 'app2n'; }
+    if (d) { d.stato = 'attivo'; d.appAttiva = true; }
     A.entraCome(u ? u.ruolo : 'dipendente', target.id);
     return { ok: true, utente: target };
   },
@@ -2107,10 +2209,24 @@ const A = {
 
   /* ---- filtri (fix DV07/DV17) ---- */
   setFiltroAccessi(patch)    { Object.assign(AppState.ui.filtri.accessi, patch); Store.emit('filtri'); },
-  setFiltroDipendenti(patch) { Object.assign(AppState.ui.filtri.dipendenti, patch); Store.emit('filtri'); },
+  /** Il filtro dipendente e' UNO SOLO, condiviso da Dipendenti e Prenotazioni:
+      cercare in una sezione filtra anche l'altra. Cambiandolo si torna a
+      pagina 1, altrimenti si resterebbe su una pagina che non esiste piu'. */
+  setFiltroDipendenti(patch) {
+    Object.assign(AppState.ui.filtri.dipendenti, patch);
+    AppState.ui.prenotazioniPagina = 0;
+    Store.emit('filtri');
+    Store.emit('dipendenti');
+    Store.emit('prenotazioni');
+  },
+
+  setPaginaPrenotazioni(n) {
+    AppState.ui.prenotazioniPagina = Math.max(0, n);
+    Store.emit('prenotazioni');
+  },
   resetFiltri(sezione)       {
     if (sezione === 'accessi')    AppState.ui.filtri.accessi = { q: '', tipo: '', stato: '', stallo: '', anomalia: false, aperto: AppState.ui.filtri.accessi.aperto };
-    if (sezione === 'dipendenti') AppState.ui.filtri.dipendenti = { q: '' };
+    if (sezione === 'dipendenti') { AppState.ui.filtri.dipendenti = { q: '' }; AppState.ui.prenotazioniPagina = 0; }
     Store.emit('filtri');
   },
 
@@ -2284,7 +2400,7 @@ const A = {
       stalloId: stalloId || null,
       poolRotante: !stalloId,
       caratteristica: caratteristica || 'standard',
-      metodoAccesso: 'app2n', appAttiva: true, stato: 'attivo',
+      appAttiva: true, stato: 'attivo',
       bloccoMotivo: null, bloccoTipo: null, bloccoDal: null,
       accessiMese: 0, noShow: 0, segnalazioniFatte: 0,
       statoAccount: 'invito_inviato',
@@ -2313,7 +2429,7 @@ const A = {
   sospendiDipendente(id, motivo) {
     const d = S.dipendente(id);
     if (!d) return null;
-    Object.assign(d, { stato: 'bloccato', metodoAccesso: 'sospeso', appAttiva: false, bloccoMotivo: motivo || 'Sospensione manuale FM', bloccoTipo: 'manuale', bloccoDal: OGGI_ISO });
+    Object.assign(d, { stato: 'bloccato', appAttiva: false, bloccoMotivo: motivo || 'Sospensione manuale FM', bloccoTipo: 'manuale', bloccoDal: OGGI_ISO });
     /* Le prenotazioni future passano da annullaPrenotazione() e non da un
        assegnamento diretto: quella funzione chiude anche l'accesso rimasto
        aperto, senza il quale lo stallo di oggi resterebbe rosso in mappa
@@ -2328,7 +2444,7 @@ const A = {
   sbloccaDipendente(id, { motivazione, durata }) {
     const d = S.dipendente(id);
     if (!d) return null;
-    Object.assign(d, { stato: 'attivo', metodoAccesso: 'app2n', appAttiva: true, bloccoMotivo: null, bloccoTipo: null, bloccoDal: null, noteSblocco: motivazione, ripristino: durata });
+    Object.assign(d, { stato: 'attivo', appAttiva: true, bloccoMotivo: null, bloccoTipo: null, bloccoDal: null, noteSblocco: motivazione, ripristino: durata });
     Store.emit('dipendenti');
     return d;
   },
@@ -2616,6 +2732,14 @@ const A = {
   },
 
   /* ---- configurazione dei turni dalla UI ---- */
+  setMetodoZona(zonaId, metodo) {
+    const z = S.zona(zonaId);
+    if (!z) return null;
+    z.metodoAccesso = metodo;
+    Store.emit('zone');
+    return z;
+  },
+
   setMappaTurno(turnoId) { AppState.ui.mappaTurnoId = turnoId; Store.emit('nav'); },
   aggiornaTurno(turnoId, patch) {
     const t = (AppState.config.turni || []).find(x => x.id === turnoId);
@@ -2854,6 +2978,6 @@ global.PC.Utils = {
   iniziali, nextId, rInt, toCSV,
   isLavorativo, giorniLavorativi
 };
-global.PC.Domini = { TIPO_STALLO, DISPONIBILITA, STATO_STALLO, METODO_ACCESSO, TIPO_SEGNALAZIONE, DIPARTIMENTI, RUOLI, PERMISSIONS, STATO_ACCOUNT, TIPI_HW };
+global.PC.Domini = { TIPO_STALLO, DISPONIBILITA, STATO_STALLO, METODO_ACCESSO, METODI_ZONA, TIPO_SEGNALAZIONE, DIPARTIMENTI, RUOLI, PERMISSIONS, STATO_ACCOUNT, TIPI_HW };
 
 })(window);

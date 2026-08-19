@@ -803,3 +803,20 @@ input[type=range]{accent-color:var(--blue)}
 .attesa-azioni{display:flex;gap:8px;justify-content:flex-end;margin-top:10px;flex-wrap:wrap}
 
 .max-turni-val{font-family:var(--font-mono);font-size:20px;font-weight:700;color:var(--blue)}
+
+.metodo-eredita{font-size:12px;font-weight:700;color:var(--text)}
+.metodo-eredita .muted{font-weight:400}
+
+/* ---- Paginazione griglia prenotazioni (CODE-18) ---- */
+.pg-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}
+.pg-info{font-size:12px;color:var(--text-muted)}
+.pg-nums{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.pg-num{min-width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;
+  border:1px solid var(--border);border-radius:var(--r-sm);font-size:12px;cursor:pointer;
+  background:var(--bg-card);transition:.15s;padding:0 6px}
+.pg-num:hover{border-color:var(--blue);color:var(--blue)}
+.pg-num.active{background:var(--blue);border-color:var(--blue);color:#FFFFFF;font-weight:700}
+.pg-gap{color:var(--text-muted);font-size:12px;padding:0 2px}
+.filtro-chip{display:inline-flex;align-items:center;gap:8px;background:var(--blue-light);
+  color:var(--blue);border-radius:999px;padding:5px 6px 5px 14px;font-size:12px;margin-bottom:12px}

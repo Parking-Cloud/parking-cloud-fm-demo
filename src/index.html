@@ -95,6 +95,10 @@
 <div id="modal-root" class="modal-overlay hidden" data-act="modal-close"></div>
 <div id="toast-el"></div>
 
+<!-- SheetJS: unico modo di generare un .xlsx vero senza backend.
+     E' l'unica dipendenza esterna oltre ai font: offline l'export Excel
+     non funziona, CSV e JSON si'. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="state.js"></script>
 <script src="ui.js"></script>
 <script src="modals.js"></script>

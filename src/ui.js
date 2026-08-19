@@ -85,6 +85,26 @@ const UI = {
     return { nomeFile, byte: blob.size };
   },
 
+  /** Scrive un .xlsx vero con SheetJS. `fogli` = [{ nome, righe[] }] dove
+      righe e' un array di oggetti: la prima riga del foglio sono le chiavi.
+      Ritorna null se la libreria non e' disponibile (offline): il chiamante
+      deve dirlo all'utente invece di fallire in silenzio. */
+  toXLSX(nomeFile, fogli) {
+    if (typeof XLSX === 'undefined') return null;
+    const wb = XLSX.utils.book_new();
+    fogli.forEach(f => {
+      const righe = f.righe || [];
+      const cols = righe.length ? Object.keys(righe[0]) : ['(nessun dato)'];
+      const aoa = [cols].concat(righe.map(r => cols.map(c => r[c])));
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      /* larghezze indicative: senza, ogni colonna esce a 8 caratteri */
+      ws['!cols'] = cols.map(c => ({ wch: Math.min(34, Math.max(10, String(c).length + 4)) }));
+      XLSX.utils.book_append_sheet(wb, ws, f.nome.slice(0, 31));
+    });
+    XLSX.writeFile(wb, nomeFile);
+    return { nomeFile, fogli: fogli.length };
+  },
+
   /* ---- TOAST ---- */
   toast(msg) {
     const t = document.getElementById('toast-el');

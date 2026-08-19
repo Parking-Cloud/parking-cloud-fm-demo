@@ -5,7 +5,7 @@
 ============================================================================ */
 (function (global) {
 'use strict';
-const { UI, Selectors: S, Actions: A, State, Modals } = global.PC;
+const { UI, Selectors: S, Actions: A, State, Modals, Domini: D } = global.PC;
 
 const MAX_RIGHE = 40;
 
@@ -47,7 +47,10 @@ global.PC.Sezioni.dipendenti = {
         `<b>${UI.esc(d.nomeCompleto)}</b>`,
         `<span class="muted">${UI.esc(d.dipartimento)}</span>`,
         d.stalloId ? UI.tag(d.stalloId, 'blue') : '<span class="muted">pool</span>',
-        d.metodoAccesso === 'app2n' ? 'App + 2N' : d.metodoAccesso === 'app' ? 'Solo App' : 'Sospeso',
+        /* Lo stato "bloccato" resta l'informazione dominante: dire "PIN Keypad"
+           di chi non puo' entrare sarebbe fuorviante. */
+        d.stato === 'bloccato' ? '<span class="muted">Sospeso</span>'
+          : UI.esc(D.METODO_ACCESSO[S.metodoAccessoPerDipendente(d.id)] || '—'),
         car,
         UI.toggle('toggle-pass-dip', d.puoRichiederePass, { dipendenteId: d.id }),
         statoBadge(d),
@@ -102,8 +105,6 @@ UI.onChange('toggle-pass-dip', d => {
 UI.on('salva-dip', d => {
   Modals._collect();
   const dip = A.aggiornaDipendente(d.dipendenteId, {
-    metodoAccesso: Modals.form.metodo,
-    appAttiva: Modals.form.metodo !== 'sospeso',
     caratteristica: Modals.form.caratteristica
   });
   Modals.close();

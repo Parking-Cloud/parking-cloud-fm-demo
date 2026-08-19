@@ -68,6 +68,83 @@ Generati da PRNG con seed fisso `20260817`: **stabili a ogni reload**.
 
 ## STORICO MODIFICHE
 
+## [19/08/2026] — CODE-18 · Metodo accesso per zona, export reali, paginazione
+
+### MODIFICA A — Il metodo di accesso appartiene alla zona, non alla persona
+- `ZONE_SEED`: nuovo campo `metodoAccesso` (A app · B pin · C app · V pin ·
+  EV qr · H app) + costante `METODI_ZONA` (app/pin/qr/bluetooth/targa).
+- Selectors `metodoAccessoPerStallo()`, `metodoAccessoPerDipendente()`
+  (pool rotante → `app`) e `origineMetodoAccesso()` per le viste di dettaglio.
+- **Rimosso `metodoAccesso` dal modello dipendente**: 9 punti di scrittura
+  eliminati (seed uffici e ospedale, `aggiungiDipendente`,
+  `completaAttivazione`, `sospendi`/`sbloccaDipendente`, allineamento
+  `appAttiva`). Zero residui.
+- `buildAccessi()` usa `metodoZona(stalloId)`, helper locale perché i builder
+  girano prima che i Selectors esistano.
+- `fm/config.js` tab Parcheggio: dropdown metodo per ogni zona + action
+  `setMetodoZona()`.
+- `modals.js -> dip-det`: via il dropdown personale, al suo posto una riga
+  informativa "PIN Keypad · Zona B — Piano -1 (2N)". Un dropdown lì
+  suggerirebbe che si possa dare a un dipendente un metodo diverso dai colleghi
+  che parcheggiano nello stesso posto.
+- `fm/dipendenti.js`: colonna Accesso derivata. Per chi è **bloccato** resta
+  "Sospeso": dire "PIN Keypad" di chi non può entrare sarebbe fuorviante.
+
+### MODIFICA B — Export: solo formati che producono un file vero
+- **PDF rimosso** dal dropdown, sostituito dalla nota "Export PDF disponibile
+  nella versione con backend". Default passato da PDF a CSV.
+- SheetJS 0.18.5 da CDN in `index.html`; `UI.toXLSX(nomeFile, fogli)` con
+  larghezze colonna e nomi foglio troncati a 31 caratteri (limite Excel).
+  Se la libreria manca (offline) ritorna `null` e il chiamante lo dice.
+- Nuovi selectors `esportaSegnalazioni()`, `esportaVisitatori()`,
+  `esportaCompleto()`; `esportaDipendenti()` riscritto con le colonne della
+  specifica (ID, Nome, Cognome, Dipartimento, Stallo, **Zona**, **Metodo
+  Accesso**, Stato, Accessi Mese).
+- `genera-export` riscritto su una matrice `REPORT`: **tutte e 12 le
+  combinazioni** tipo x formato producono un download. CSV multi-sezione usa
+  intestazioni `### Nome`; JSON multi-sezione un oggetto con 4 chiavi; Excel
+  4 fogli separati.
+- `build.py`: il controllo sui riferimenti esterni ignora le URL assolute —
+  serve a scovare i file locali dimenticati, non a vietare le CDN.
+
+### MODIFICA C — Paginazione e filtro bidirezionale in Prenotazioni
+- `righeSettimanaFM()` restituisce `{ righe, pagina, pagine, totale, da, a }`
+  e pagina **tutti** i dipendenti filtrati, 20 per volta. Prima mostrava solo i
+  14 "in evidenza": **gli altri 298 erano invisibili**.
+- `ui.prenotazioniPagina` sopravvive al cambio sezione e al cambio settimana;
+  paginazione e navigazione settimane sono indipendenti.
+- Barra "Dipendenti 1-20 di 312" con numeri, ellissi e frecce disabilitate ai
+  bordi.
+- Ricerca dipendente in Prenotazioni sullo **stesso stato** di Dipendenti:
+  `setFiltroDipendenti()` ora emette `filtri`, `dipendenti` **e**
+  `prenotazioni`, e azzera la pagina — altrimenti si resterebbe su una pagina
+  che dopo il filtro non esiste più.
+- Chip "Filtro attivo: … ✕" sopra la griglia.
+
+### Scelte da conoscere
+- **Il "Metodo" nel log accessi segue la configurazione attuale della zona**,
+  non quello registrato al momento del passaggio. È ciò che rende osservabile
+  il TEST B (cambio Zona B → il log mostra QR), ma significa che cambiando il
+  varco si riscrive la lettura dello storico.
+- **SheetJS è una dipendenza remota**: aprendo `dist/` da `file://` senza rete
+  l'export Excel non funziona (CSV e JSON sì) e la UI lo dice. Online non è un
+  problema. È il secondo riferimento esterno dopo i Google Fonts (N03).
+
+### Flussi verificati
+- **TEST A 27/27 ✅** — checklist completa, SheetJS 0.18.5 caricato
+- **TEST B 8/8** — default per zona, dropdown a 5 voci, cambio B → QR con 43
+  record del log che seguono, dip-det "QR Code · Zona B", colonna tabella,
+  ripristino PIN, campo personale inesistente
+- **TEST C 8/8** — PDF assente e nota presente, CSV con `;` e 8 colonne, Excel
+  con foglio "Accessi" e intestazioni esatte, JSON, Dipendenti con "Metodo
+  Accesso" derivato, **Report Completo con 4 fogli**, JSON a 4 chiavi,
+  Segnalazioni con le 9 colonne della specifica
+- **TEST D 8/8** — 20 righe, "Dipendenti 1-20 di 312", 16 pagine con ellissi,
+  pagina 2 → 21-40, **pagina che sopravvive a cambio settimana e cambio
+  sezione**, frecce disabilitate ai bordi
+- **TEST E 9/9** — filtro condiviso nei due sensi, chip, paginazione adattata,
+  reset da entrambe le sezioni, nessuna pagina fantasma
+
 ## [18/08/2026] — CODE-17 · Verifica di completezza A–G e lacune colmate
 > Confronto puntuale fra la specifica monolitica CODE-17 (MODIFICHE A–G) e il
 > codice, realizzato come 17A + 17B + 17C. **Tre lacune reali trovate e

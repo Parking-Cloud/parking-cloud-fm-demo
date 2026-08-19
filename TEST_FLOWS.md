@@ -368,6 +368,56 @@ stato incoerente. È l'origine di CODE-03.
   posizione in coda nella TAB 3 · badge FM "Lista attesa: N" · assegnazione che
   crea la prenotazione col turno giusto e aggiorna la voce a `assegnato`
 
+## F26 — Metodo di accesso ereditato dalla zona (CODE-18)
+
+- **Sorgente:** `state.js` (`ZONE_SEED`, `metodoAccessoPerStallo`), `fm/config.js`, `modals.js -> dip-det`, `fm/dipendenti.js`
+- **Selectors:** `metodoAccessoPerStallo()`, `metodoAccessoPerDipendente()`, `origineMetodoAccesso()`
+- **Actions:** `setMetodoZona(zonaId, metodo)`
+- **Da sapere:**
+  - Il dipendente **non ha piu'** il campo `metodoAccesso`. Chi lo cerca su
+    `d.metodoAccesso` trova `undefined`: si passa dai selectors.
+  - Pool rotante -> `app`: senza stallo fisso non c'e' una zona da cui ereditare.
+  - Nel seed serve l'helper locale `metodoZona()`: i builder girano prima che
+    `Selectors` esista (stessa trappola di `buildAccessiOspedale`).
+  - Nella tabella dipendenti lo stato `bloccato` vince sul metodo: mostrare
+    "PIN Keypad" a chi non puo' entrare sarebbe fuorviante.
+  - Il "Metodo" nel log accessi e negli export e' **derivato dalla zona**, non
+    quello storicamente registrato: cambiando il varco cambia la lettura dello
+    storico. E' voluto, ma va saputo.
+- **Verifica:** cambio metodo di una zona -> log accessi, dip-det e tabella
+  dipendenti seguono tutti; ripristino -> tutto torna
+
+## F27 — Export multi-formato (CODE-18)
+
+- **Sorgente:** `modals.js -> export`, `fm/config.js -> genera-export`, `ui.js -> toXLSX`
+- **Selectors:** `esportaAccessi()`, `esportaDipendenti()`, `esportaSegnalazioni()`, `esportaVisitatori()`, `esportaCompleto()`
+- **Da sapere:**
+  - Nel dropdown ci sono **solo** i formati che producono un file: CSV, Excel,
+    JSON. Il PDF richiede un backend e non va rimesso senza.
+  - **SheetJS e' remoto**: offline `UI.toXLSX()` ritorna `null` e il chiamante
+    deve avvisare, non fallire in silenzio.
+  - Il CSV e' un file solo: piu' sezioni si concatenano con `### Nome`,
+    altrimenti colonne diverse si sovrapporrebbero.
+  - `build.py` ignora le URL assolute nel controllo dei riferimenti esterni.
+- **Verifica:** tutte e 12 le combinazioni tipo x formato scaricano; Excel del
+  Report Completo con 4 fogli; CSV con `;` e BOM
+
+## F28 — Paginazione e filtro condiviso in Prenotazioni (CODE-18)
+
+- **Sorgente:** `fm/prenotazioni.js`, `state.js` (`righeSettimanaFM`, `setFiltroDipendenti`, `setPaginaPrenotazioni`)
+- **Da sapere:**
+  - `righeSettimanaFM()` **non restituisce piu' un array** ma
+    `{ righe, pagina, pagine, totale, da, a }`. Chi lo usa come array rompe.
+  - Il filtro dipendente e' **uno solo** (`ui.filtri.dipendenti.q`), condiviso
+    fra Dipendenti e Prenotazioni: `setFiltroDipendenti()` emette entrambe le
+    sezioni.
+  - Cambiare filtro **azzera la pagina**: senza, si resta su una pagina che
+    dopo il filtro non esiste piu'.
+  - Pagina e settimana sono indipendenti: nessuna delle due azzera l'altra, e
+    la pagina sopravvive al cambio sezione.
+- **Verifica:** 20 righe/pagina su 312; pagina 2 dopo cambio settimana; filtro
+  in una sezione visibile nell'altra; chip di reset
+
 ## F12 — Login Admin → accesso Amministrazione
 
 - **Sorgente:** `index.html` (router), `fm/amministrazione.js`

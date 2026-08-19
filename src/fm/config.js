@@ -46,7 +46,7 @@ function tabParcheggio() {
     titolo: '🏗 Zone & Posti',
     azioni: [UI.btn('+ Aggiungi', { azione: 'aggiungi-zona', variante: 'btn-primary' })],
     stile: 'margin-bottom:14px',
-    body: `<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">Definisci le zone — usate in mappa, prenotazioni e pass. Il numero di posti crea o rimuove stalli reali.</div>`
+    body: `<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">Definisci le zone — usate in mappa, prenotazioni e pass. Il numero di posti crea o rimuove stalli reali. Il <strong>metodo di accesso</strong> dipende dal varco installato nella zona e viene ereditato da tutti i suoi stalli.</div>`
       + State.zone.map(z => {
           const reali = State.stalli.filter(s => s.zonaId === z.id).length;
           return `<div class="zone-row">
@@ -54,6 +54,8 @@ function tabParcheggio() {
             <input class="form-input" style="flex:1;padding:5px 8px;font-size:12px" value="${UI.esc(z.nome)}" data-act="zona-nome" data-zona-id="${UI.esc(z.id)}" data-focus-key="zn-${UI.esc(z.id)}">
             <input class="form-input" type="number" style="width:58px;padding:5px 7px;font-size:12px;text-align:center" value="${z.posti}" min="0" max="200" data-act="zona-posti" data-zona-id="${UI.esc(z.id)}" data-focus-key="zp-${UI.esc(z.id)}" title="Posti">
             <span class="muted mono" style="font-size:10px;min-width:34px" title="stalli attualmente in mappa">(${reali})</span>
+            ${UI.select(D.METODI_ZONA.map(m => ({ v: m, l: D.METODO_ACCESSO[m] })), z.metodoAccesso || 'app',
+                { azione: 'zona-metodo', params: { zonaId: z.id }, stile: 'width:132px;font-size:11px;padding:5px 7px' })}
             ${UI.btn('✕', { azione: 'rimuovi-zona', params: { zonaId: z.id }, stile: 'color:var(--red);font-size:11px' })}
           </div>`;
         }).join('')
@@ -366,6 +368,11 @@ UI.onChange('toggle-notifica', (d, ev) => {
 UI.onInput('zona-nome',   (d, ev) => A.aggiornaZona(d.zonaId, { nome: ev.target.value }));
 UI.onChange('zona-posti', (d, ev) => A.aggiornaZona(d.zonaId, { posti: parseInt(ev.target.value, 10) || 0 }));
 
+UI.onChange('zona-metodo', (d, ev) => {
+  const z = A.setMetodoZona(d.zonaId, ev.target.value);
+  UI.toast(`🔑 ${z.nome}: accesso via ${D.METODO_ACCESSO[z.metodoAccesso]}`);
+});
+
 UI.on('aggiungi-zona', () => { const id = A.aggiungiZona(); UI.toast(`Zona ${id} aggiunta · imposta i posti e salva`); });
 UI.on('rimuovi-zona', d => {
   const n = State.stalli.filter(s => s.zonaId === d.zonaId).length;
@@ -394,32 +401,52 @@ UI.on('salva-policy', () => {
 
 /* ---- export / periodo ---- */
 UI.on('sel-report', d => { Modals._collect(); Modals.form.report = d.valore; Modals._render(); });
+/* Ogni combinazione tipo x formato produce un file VERO: nel modale non
+   compaiono piu' opzioni che non funzionano (il PDF richiede un backend). */
+const REPORT = {
+  completo:     { nome: 'Report Completo',           file: 'completo',     fogli: () => S.esportaCompleto() },
+  accessi:      { nome: 'Log Accessi',               file: 'accessi',      fogli: () => [{ nome: 'Accessi', righe: S.esportaAccessi() }] },
+  segnalazioni: { nome: 'Segnalazioni & Violazioni', file: 'segnalazioni', fogli: () => [{ nome: 'Segnalazioni', righe: S.esportaSegnalazioni() }] },
+  dipendenti:   { nome: 'Report Dipendenti',         file: 'dipendenti',   fogli: () => [{ nome: 'Dipendenti', righe: S.esportaDipendenti() }] }
+};
+
 UI.on('genera-export', () => {
   Modals._collect();
-  const { report, formato, email } = Modals.form;
-  const nomi = { completo: 'Report Completo', accessi: 'Log Accessi', segnalazioni: 'Segnalazioni & Violazioni', dipendenti: 'Report Dipendenti' };
-  const oggi = U.OGGI_ISO;
+  const { report, formato } = Modals.form;
+  const def = REPORT[report] || REPORT.completo;
+  const fogli = def.fogli();
+  const totale = fogli.reduce((n, f) => n + f.righe.length, 0);
+  const base = 'parkingcloud_' + def.file + '_' + U.OGGI_ISO;
   Modals.close();
 
-  /* Due combinazioni producono un file vero; le altre restano simulate. */
-  if (report === 'accessi' && formato === 'CSV') {
-    const righe = S.esportaAccessi();
+  if (formato === 'CSV') {
+    /* Il CSV e' un file solo: piu' sezioni si concatenano con un'intestazione
+       per blocco, altrimenti le colonne diverse si sovrapporrebbero. */
+    const testo = fogli.length === 1
+      ? U.toCSV(fogli[0].righe)
+      : fogli.map(f => '### ' + f.nome + '\r\n' + U.toCSV(f.righe)).join('\r\n\r\n');
     /* BOM: senza, Excel interpreta male gli accenti */
-    const esito = UI.scarica('parkingcloud_accessi_' + oggi + '.csv',
-      '﻿' + U.toCSV(righe), 'text/csv');
-    UI.toast(`⬇ ${esito.nomeFile} scaricato · ${righe.length} record · ${State.config.periodo.label.toLowerCase()}`);
+    const esito = UI.scarica(base + '.csv', '﻿' + testo, 'text/csv');
+    UI.toast(`⬇ ${esito.nomeFile} · ${totale} record`);
     return;
   }
 
-  if (report === 'dipendenti' && formato === 'JSON') {
-    const dati = S.esportaDipendenti();
-    const esito = UI.scarica('parkingcloud_dipendenti_' + oggi + '.json',
-      JSON.stringify(dati, null, 2), 'application/json');
-    UI.toast(`⬇ ${esito.nomeFile} scaricato · ${dati.length} dipendenti`);
+  if (formato === 'JSON') {
+    const dati = fogli.length === 1
+      ? fogli[0].righe
+      : fogli.reduce((o, f) => { o[f.nome.toLowerCase()] = f.righe; return o; }, {});
+    const esito = UI.scarica(base + '.json', JSON.stringify(dati, null, 2), 'application/json');
+    UI.toast(`⬇ ${esito.nomeFile} · ${totale} record`);
     return;
   }
 
-  UI.toast(`📊 ${nomi[report] || 'Report'} (${formato}) in generazione · invio a ${email}`);
+  /* Excel */
+  const esito = UI.toXLSX(base + '.xlsx', fogli);
+  if (!esito) {
+    UI.toast('⚠ Libreria Excel non disponibile offline · usa CSV o JSON');
+    return;
+  }
+  UI.toast(`⬇ ${esito.nomeFile} · ${esito.fogli} fogli${esito.fogli > 1 ? '' : ''} · ${totale} record`);
 });
 UI.on('set-periodo', d => { A.setPeriodo(d.valore); Modals.close(); UI.toast('Periodo: ' + State.config.periodo.label); });
 UI.on('applica-periodo', () => {
