@@ -46,20 +46,31 @@ const run = (text, o = {}) => new TextRun({
   color: o.color || NERO, bold: o.bold, italics: o.italics, break: o.break
 });
 
+/* I titoli DEVONO usare gli stili Word "Heading 1/2/3": l'indice raccoglie per
+   stile, non per aspetto. Formattandoli a mano si ottiene un documento identico
+   a vedersi e un indice vuoto. L'aspetto brand vive in styles.paragraphStyles. */
 const h1 = (text) => new Paragraph({
-  spacing: { before: 320, after: 160 },
+  heading: HeadingLevel.HEADING_1,
   border: { bottom: { style: BorderStyle.SINGLE, size: 12, color: BLU, space: 6 } },
-  children: [new TextRun({ text, font: FONT, size: 36, bold: true, color: BLU })]
+  children: [new TextRun({ text })]
 });
 
 const h2 = (text) => new Paragraph({
-  spacing: { before: 260, after: 110 },
-  children: [new TextRun({ text, font: FONT, size: 28, bold: true, color: NERO })]
+  heading: HeadingLevel.HEADING_2,
+  children: [new TextRun({ text })]
 });
 
 const h3 = (text) => new Paragraph({
-  spacing: { before: 190, after: 80 },
-  children: [new TextRun({ text, font: FONT, size: 24, bold: true, color: BLU })]
+  heading: HeadingLevel.HEADING_3,
+  children: [new TextRun({ text })]
+});
+
+/** Titolo con l'aspetto di un H1 ma SENZA stile Heading: serve alla pagina
+    dell'indice, che altrimenti elencherebbe sé stessa come prima voce. */
+const h1FuoriIndice = (text) => new Paragraph({
+  spacing: { before: 320, after: 160 },
+  border: { bottom: { style: BorderStyle.SINGLE, size: 12, color: BLU, space: 6 } },
+  children: [new TextRun({ text, font: FONT, size: 36, bold: true, color: BLU })]
 });
 
 /** etichetta in maiuscoletto usata nelle schede di sezione (SCOPO, FLUSSI…) */
@@ -210,10 +221,10 @@ const copertina = [
 /*  INDICE                                                                    */
 /* ========================================================================== */
 const indice = [
-  h1('Indice'),
+  h1FuoriIndice('Indice'),
   ...nota([
-    'L’indice si popola all’apertura del documento in Word: se i numeri di pagina non compaiono, '
-    + 'seleziona tutto (Ctrl+A) e premi F9, oppure clic destro sull’indice → "Aggiorna campo".'
+    'L’indice si aggiorna da solo all’apertura in Word. Se dopo una modifica i numeri di pagina '
+    + 'non fossero allineati: clic destro sull’indice → "Aggiorna campo" → "Aggiorna intero sommario".'
   ]),
   new TableOfContents('Sommario', { hyperlinks: true, headingStyleRange: '1-3' }),
   new Paragraph({ children: [new PageBreak()] })
@@ -1383,9 +1394,23 @@ const doc = new Document({
   creator: 'Parking Cloud',
   title: 'FM Dashboard — Guida Funzionale e Piano di Test',
   description: 'Documento interno: guida funzionale e piano di test della FM Dashboard',
+  /* Word aggiorna l'indice all'apertura solo se il documento lo chiede. */
+  features: { updateFields: true },
   styles: {
     default: {
-      document: { run: { font: FONT, size: 22, color: NERO } }
+      document:  { run: { font: FONT, size: 22, color: NERO } },
+      heading1: {
+        run: { font: FONT, size: 36, bold: true, color: BLU },
+        paragraph: { spacing: { before: 320, after: 160 }, outlineLevel: 0 }
+      },
+      heading2: {
+        run: { font: FONT, size: 28, bold: true, color: NERO },
+        paragraph: { spacing: { before: 260, after: 110 }, outlineLevel: 1 }
+      },
+      heading3: {
+        run: { font: FONT, size: 24, bold: true, color: BLU },
+        paragraph: { spacing: { before: 190, after: 80 }, outlineLevel: 2 }
+      }
     }
   },
   numbering: {
