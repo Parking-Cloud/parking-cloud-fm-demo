@@ -231,13 +231,7 @@ function sezioneRichieste(dip) {
                 ${UI.badge(lbl, col)}
               </div>
               <div class="emp-req-date">📅 ${UI.esc(U.fmtMedium(U.fromISO(r.dataInizio)))}${unGiorno ? '' : ' → ' + UI.esc(U.fmtMedium(U.fromISO(r.dataFine)))}</div>
-              ${r.stato === 'approvata' && r.codiceAccesso
-                ? `<div class="emp-code-box">
-                     <span class="emp-code-lbl">Codice accesso</span>
-                     <span class="emp-code-val">${UI.esc(r.codiceAccesso)}</span>
-                     <span class="emp-code-note">Valido dal ${UI.esc(U.fmtDM(U.fromISO(r.dataInizio)))} al ${UI.esc(U.fmtDM(U.fromISO(r.dataFine)))} · H24</span>
-                   </div>`
-                : ''}
+              ${r.stato === 'approvata' ? contenutoPassRichiesta(r) : ''}
               ${r.stato === 'rifiutata' && r.note
                 ? `<div class="emp-req-nota">Motivo: ${UI.esc(r.note)}</div>` : ''}
             </div>`;
@@ -264,6 +258,42 @@ function sezioneRichieste(dip) {
     <div class="emp-section-title" style="margin-bottom:14px">Le mie richieste</div>
     ${tabs}
     <div class="emp-req-body">${corpo}</div>
+  </div>`;
+}
+
+/** Che cosa mostrare per un pass approvato: dipende dal metodo della zona in
+    cui il visitatore ha ricevuto lo stallo, non da come e' stata scritta la
+    richiesta. Un codice numerico davanti a un lettore QR non serve a nulla. */
+function contenutoPassRichiesta(r) {
+  const v = r.visitatoreId ? S.visitatore(r.visitatoreId) : null;
+  /* Si legge dal visitatore creato; se manca (richiesta ancora senza pass) si
+     ricade sul metodo congelato nella richiesta stessa. Mai ri-derivare dalla
+     zona: cambierebbe sotto gli occhi del dipendente. */
+  const pv = S.passVisitatore(v || { metodoPass: r.metodoPass, stalloId: null });
+  const validita = `Valido dal ${UI.esc(U.fmtDM(U.fromISO(r.dataInizio)))} al ${UI.esc(U.fmtDM(U.fromISO(r.dataFine)))} \u00b7 H24`;
+
+  if (pv.tipo === 'codice' && r.codiceAccesso) {
+    return `<div class="emp-code-box">
+      <span class="emp-code-lbl">Codice accesso</span>
+      <span class="emp-code-val">${UI.esc(r.codiceAccesso)}</span>
+      <span class="emp-code-note">${validita}</span>
+    </div>`;
+  }
+  if (pv.tipo === 'qr' && r.codiceQR) {
+    return `<div class="emp-code-box">
+      <span class="emp-code-lbl">QR accesso</span>
+      <span class="emp-code-val emp-code-qr">${UI.esc(r.codiceQR)}</span>
+      <span class="emp-code-note">${validita} \u00b7 da mostrare al lettore QR</span>
+    </div>`;
+  }
+  return `<div class="emp-ricevuta">
+    <div class="emp-ricevuta-hd">${pv.icona} Ricevuta di accesso \u00b7 nessun codice</div>
+    <div class="emp-ricevuta-riga"><span>Visitatore</span><strong>${UI.esc(r.visitatoreNome)}</strong></div>
+    <div class="emp-ricevuta-riga"><span>Azienda</span><strong>${UI.esc(r.azienda || '\u2014')}</strong></div>
+    <div class="emp-ricevuta-riga"><span>Stallo</span><strong>${UI.esc((v && v.stalloId) || '\u2014')}</strong></div>
+    <div class="emp-ricevuta-riga"><span>Validit\u00e0</span><strong>${validita}</strong></div>
+    ${pv.nota ? `<div class="emp-ricevuta-nota">\u2139\ufe0f ${UI.esc(pv.nota)}</div>` : ''}
+    <div class="emp-ricevuta-istr">${UI.esc(pv.istruzioni)}</div>
   </div>`;
 }
 
@@ -294,12 +324,19 @@ function cardGiorno(g, dip) {
   const isOggi = iso === U.OGGI_ISO;
   const pre = S.prenotazione(dip.id, iso);
 
+  /* In modalita' turni un giorno puo' contenere piu' prenotazioni (doppio
+     turno): la card le elenca tutte, altrimenti il secondo turno risulterebbe
+     invisibile a chi l'ha prenotato. */
+  const delGiorno = S.prenotazioniGiorno(dip.id, iso).filter(p => p.tipo === 'ufficio');
   let cls = 'emp-day', stato = '', statoCls = '', spot = '';
   if (passato)                    { cls += ' day-past'; stato = 'Passato'; statoCls = 'past'; }
   else if (pre && pre.tipo === 'ufficio') {
-    cls += ' day-booked'; stato = '✓ Prenotato'; statoCls = 'ok';
-    const t = pre.turnoId ? S.turno(pre.turnoId) : null;
-    spot = pre.stalloId + (t ? ' · ' + t.label : '');
+    cls += ' day-booked'; statoCls = 'ok';
+    stato = delGiorno.length > 1 ? '✓ ' + delGiorno.length + ' turni' : '✓ Prenotato';
+    spot = delGiorno.map(p => {
+      const t = p.turnoId ? S.turno(p.turnoId) : null;
+      return p.stalloId + (t ? ' · ' + t.label : '');
+    }).join('\n');
   }
   else if (pre && pre.tipo === 'sw')      { cls += ' day-sw'; stato = '🏠 Smart W.'; statoCls = 'sw'; }
   else if (fuoriFinestra)         { cls += ' day-past'; stato = 'Non prenotabile'; statoCls = 'past'; }
@@ -314,7 +351,12 @@ function cardGiorno(g, dip) {
   const cliccabile = !passato && !fuoriFinestra;
   /* Su un giorno gia' prenotato si apre il DETTAGLIO, non di nuovo la
      prenotazione: da li' si fa check-in, si spostano gli orari, si cancella. */
-  const azione = pre && pre.tipo === 'ufficio'
+  /* In modalita' TURNI il click porta sempre alla schermata del giorno: e' li'
+     che si sceglie fra i turni e si aggiunge il secondo. Puntare al dettaglio
+     della singola prenotazione — corretto in giornaliera, dove ce n'e' una
+     sola — renderebbe irraggiungibile il doppio turno. */
+  const perTurni = State.config.modalitaPrenotazione === 'turni';
+  const azione = !perTurni && pre && pre.tipo === 'ufficio' && delGiorno.length === 1
     ? UI.act('emp-apri-prenot', { prenotazioneId: pre.id })
     : UI.act('emp-apri-giorno', { giornoIso: iso });
   return `<div class="${cls}"${cliccabile ? azione : ''}>
@@ -322,7 +364,7 @@ function cardGiorno(g, dip) {
     <div class="day-dow">${U.DAYS_IT[g.getDay()]}</div>
     <div class="day-num">${g.getDate()}</div>
     <div class="day-status ${statoCls}">${stato}</div>
-    ${spot ? `<div class="day-spot">${UI.esc(spot)}</div>` : ''}
+    ${spot ? spot.split('\n').map(s => `<div class="day-spot">${UI.esc(s)}</div>`).join('') : ''}
     ${dentro ? `<div class="day-timer">\u23f1 ${U.fmtMinuti((S.durataPrenotazioneAttiva(pre.id) || 0) * 60000)}</div>` : ''}
   </div>`;
 }
@@ -351,15 +393,22 @@ function bloccoCheckIn(p, opt) {
     </div>`;
   }
 
-  /* --- dentro: timer + check-out, identici a ogni livello --- */
+  /* --- dentro: timer sempre uguale, USCITA no. Dove il varco legge la targa
+         anche in uscita, un pulsante "Check-out" grande sarebbe una bugia: la
+         sosta si chiude da sola. Resta comunque un fallback, perche' la
+         telecamera puo' non leggere. --- */
   if (p.checkInTs) {
+    const auto = S.checkOutAutomatico(p.stalloId);
     return `<div class="chk-box chk-in">
       <div class="chk-row">
         ${UI.badge('\u2713 Dentro \u00b7 dalle ' + UI.esc(p.checkIn), 'green', true)}
         <span class="mbc-timer">\u23f1 ${U.fmtMinuti((S.durataPrenotazioneAttiva(p.id) || 0) * 60000)}</span>
       </div>
       <div class="chk-hint">Accesso registrato via ${UI.esc(S.metodoDef(p.metodoCheckIn || metodo).label)}</div>
-      ${UI.btn('\u23f9 Check-out', { azione: 'emp-checkout', params: { prenotazioneId: p.id }, variante: 'btn-danger' })}
+      ${auto
+        ? `<div class="chk-text">Check-out automatico via riconoscimento targa all'uscita.</div>`
+          + UI.btn('\u23f9 Check-out manuale (fallback)', { azione: 'emp-checkout', params: { prenotazioneId: p.id } })
+        : UI.btn('\u23f9 Check-out', { azione: 'emp-checkout', params: { prenotazioneId: p.id }, variante: 'btn-danger', sm: false })}
     </div>`;
   }
 

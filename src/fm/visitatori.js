@@ -91,10 +91,15 @@ UI.on('crea-visitatore', () => {
     nome: (fm.nome || 'Visitatore').trim(), azienda: fm.azienda, email: fm.email.trim(),
     dataISO: fm.data, oraInizio: fm.da, oraFine: fm.a, referenteId: fm.referente
   });
-  if (fm.codice) v.codiceAccesso = fm.codice;
+  /* Il codice digitato a mano vale solo se il pass e' davvero "a codice":
+     scriverlo su una ricevuta creerebbe un numero che nessun varco legge. */
+  const pv = S.passVisitatore(v);
+  if (pv.tipo === 'codice' && fm.codice) v.codiceAccesso = fm.codice;
   Modals.close();
   A.vaiA('visitatori');
-  UI.toast(`✓ Pass ${v.passId} creato · codice ${v.codiceAccesso} inviato a ${v.email}`);
+  UI.toast(pv.tipo === 'codice' ? `✓ Pass ${v.passId} creato · codice ${v.codiceAccesso} inviato a ${v.email}`
+    : pv.tipo === 'qr' ? `✓ Pass ${v.passId} creato · QR ${v.codiceQR} inviato a ${v.email}`
+    : `✓ Pass ${v.passId} creato · ricevuta inviata a ${v.email} · ${pv.metodoLabel}`);
 });
 
 UI.on('vis-arrivato', d => {

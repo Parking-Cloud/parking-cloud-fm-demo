@@ -181,37 +181,52 @@ const STATO_STALLO = {
   bloccato:     { label: 'Bloccato',             cls: 'ms-maint' }
 };
 
-/* I metodi di accesso, classificati per QUANTO deve fare il dipendente.
-   E' la distinzione che conta in fase di vendita: "quanto e' comodo entrare",
-   non quale marca di hardware c'e' sul cancello.
-     zero    -> non fa nulla, il varco lo riconosce
-     azione  -> un gesto rapido (avvicina, scansiona), nessun dato da digitare
-     manuale -> deve digitare, mostrare qualcosa o farsi aprire
-   Il check-out manuale dall'app resta SEMPRE disponibile come fallback,
-   qualunque sia il metodo di ingresso. */
+/* Che cosa riceve un VISITATORE dipende dal metodo della zona in cui gli si
+   assegna lo stallo. Un codice numerico è inutile davanti a un lettore QR, e
+   davanti a un varco Bluetooth — che si apre solo con l'app del dipendente —
+   nessun codice può funzionare: lì il pass è una ricevuta, e chi apre è il
+   referente. `notaPass` dice al visitatore cosa aspettarsi davvero. */
 const TIPI_METODO_ACCESSO = {
-  targa:       { label: 'ANPR (riconoscimento targa)', tipoCheckIn: 'zero',
+  targa:       { label: 'ANPR (riconoscimento targa)', tipoCheckIn: 'zero',    checkOutAuto: true,
+                 tipoPass: 'ricevuta', notaPass: 'Accesso automatico via riconoscimento targa',
                  desc: 'Accesso rilevato automaticamente dalla telecamera. Nessuna azione richiesta dal dipendente.' },
-  qr:          { label: 'QR Code (scansione app)',     tipoCheckIn: 'azione',
+  qr:          { label: 'QR Code (scansione app)',     tipoCheckIn: 'azione',  checkOutAuto: false,
+                 tipoPass: 'qr',
                  desc: 'Il dipendente inquadra il QR con l\'app.' },
-  bluetooth:   { label: 'Bluetooth (avvicina app)',    tipoCheckIn: 'azione',
+  bluetooth:   { label: 'Bluetooth (avvicina app)',    tipoCheckIn: 'azione',  checkOutAuto: false,
+                 tipoPass: 'ricevuta', notaPass: 'Il referente verrà ad accoglierti',
                  desc: 'Il varco si apre avvicinando lo smartphone.' },
-  badge:       { label: 'Badge / RFID',                tipoCheckIn: 'azione',
+  badge:       { label: 'Badge / RFID',                tipoCheckIn: 'azione',  checkOutAuto: false,
+                 tipoPass: 'ricevuta', notaPass: 'Il referente verrà ad accoglierti',
                  desc: 'Il dipendente avvicina il badge al lettore.' },
-  pin:         { label: 'PIN Keypad',                  tipoCheckIn: 'manuale',
+  pin:         { label: 'PIN Keypad',                  tipoCheckIn: 'manuale', checkOutAuto: false,
+                 tipoPass: 'codice',
                  desc: 'Il dipendente digita il PIN sul tastierino.' },
-  guardiano:   { label: 'Guardiano (con ricevuta)',    tipoCheckIn: 'manuale',
+  guardiano:   { label: 'Guardiano (con ricevuta)',    tipoCheckIn: 'manuale', checkOutAuto: false,
+                 tipoPass: 'ricevuta',
                  desc: 'Accesso autorizzato dal personale in guardiola.' },
-  telecomando: { label: 'Telecomando',                 tipoCheckIn: 'manuale',
+  telecomando: { label: 'Telecomando',                 tipoCheckIn: 'manuale', checkOutAuto: false,
+                 tipoPass: 'ricevuta', notaPass: 'Il referente verrà ad accoglierti',
                  desc: 'Apertura con telecomando personale.' },
-  locker:      { label: 'Locker (codice/chiave)',      tipoCheckIn: 'manuale',
+  locker:      { label: 'Locker (codice/chiave)',      tipoCheckIn: 'manuale', checkOutAuto: false,
+                 tipoPass: 'codice',
                  desc: 'Ritiro chiave o codice da armadietto.' },
-  prossimita:  { label: 'Sensore prossimità',          tipoCheckIn: 'manuale',
+  prossimita:  { label: 'Sensore prossimità',          tipoCheckIn: 'manuale', checkOutAuto: false,
+                 tipoPass: 'ricevuta',
                  desc: 'Rilevazione a corto raggio con conferma.' },
-  libero:      { label: 'Libero (senza controllo)',    tipoCheckIn: 'manuale',
+  libero:      { label: 'Libero (senza controllo)',    tipoCheckIn: 'manuale', checkOutAuto: false,
+                 tipoPass: 'ricevuta',
                  desc: 'Nessun varco: accesso libero.' },
-  app:         { label: 'App mobile',                  tipoCheckIn: 'manuale',
+  app:         { label: 'App mobile',                  tipoCheckIn: 'manuale', checkOutAuto: false,
+                 tipoPass: 'ricevuta',
                  desc: 'Apertura dall\'app del dipendente.' }
+};
+
+/* I tre contenuti possibili di un pass visitatore. */
+const TIPI_PASS = {
+  codice:   { label: 'Codice numerico', icona: '🔑', istruzioni: 'Digita il codice sul tastierino all\'ingresso' },
+  qr:       { label: 'QR Code',         icona: '📱', istruzioni: 'Mostra questo codice al lettore QR all\'ingresso' },
+  ricevuta: { label: 'Ricevuta',        icona: '🧾', istruzioni: 'Mostra questa ricevuta al guardiano o al referente' }
 };
 /* Il check-out non dipende dal metodo: e' sempre manuale dall'app finche'
    l'integrazione hardware non lo automatizza. */
@@ -689,7 +704,7 @@ function buildVisitatori(dipendenti) {
     stato: v.stato,                     // atteso | dentro | uscito | revocato
     zonaErrata: !!v.zonaErrata,
     scaduto: !!v.scaduto,
-    codiceAccesso: String(rInt(1000, 9999)),
+    codiceAccesso: String(rInt(1000, 9999)), codiceQR: null,
     referenteId: i % 3 === 0 ? fmId : (dipendenti[(i % 12)] || dipendenti[0]).id,
     creatoIl: OGGI_ISO
   }));
@@ -708,7 +723,7 @@ function buildVisitatori(dipendenti) {
         stalloId: 'V-' + String((i % 16) + 1).padStart(2, '0'),
         data: isoG, oraInizio: base.da, oraFine: base.a,
         stato: 'uscito', zonaErrata: false, scaduto: false,
-        codiceAccesso: String(rInt(1000, 9999)),
+        codiceAccesso: String(rInt(1000, 9999)), codiceQR: null,
         referenteId: fmId, creatoIl: isoG
       });
     }
@@ -957,6 +972,7 @@ function buildConfig() {
     tolleranzaCambioTurnoMin: 30,
     prenotazioni: {
       finestraGiorniLavorativi: 10, // finestra prenotazione dipendente, in giorni lavorativi (oggi incluso)
+      maxTurniPerDipendente: 3,     // solo in modalita' turni: doppi turni consentiti fino a questo numero
       noShowMinuti: 30,
       durataMaxDipendenteOre: 10,
       notificaDurataOre: 8,
@@ -1032,7 +1048,7 @@ function buildRichiestePass(dipendenti) {
     dataFine:   toISO(addDays(OGGI, 2)),
     stato: 'in_attesa',
     note: '',
-    codiceAccesso: null,
+    codiceAccesso: null, codiceQR: null,
     esitoIlTs: null,
     visto: true
   }];
@@ -1889,6 +1905,48 @@ const S = {
   },
   metodoDef(metodo) { return TIPI_METODO_ACCESSO[metodo] || TIPI_METODO_ACCESSO.app; },
 
+  /** Che cosa riceve un visitatore che parcheggia in questa zona. */
+  tipoPassPerZona(zonaId) {
+    const z = S.zona(zonaId);
+    const m = (z && z.metodoAccesso) || S.metodoPassDefault();
+    return (TIPI_METODO_ACCESSO[m] || TIPI_METODO_ACCESSO.app).tipoPass;
+  },
+  /** Metodo da usare quando un pass non ha (ancora) uno stallo: quello della
+      zona visitatori, o — se non esiste piu' — il piu' diffuso fra le zone.
+      Non si blocca mai la creazione di un pass per questo. */
+  metodoPassDefault() {
+    const zv = S.zona('V');
+    if (zv && zv.metodoAccesso) return zv.metodoAccesso;
+    const conta = {};
+    AppState.zone.forEach(z => { const m = z.metodoAccesso || 'app'; conta[m] = (conta[m] || 0) + 1; });
+    return Object.keys(conta).sort((a, b) => conta[b] - conta[a])[0] || 'app';
+  },
+  metodoPerVisitatore(v) {
+    const st = v && v.stalloId ? S.stallo(v.stalloId) : null;
+    return (st && (S.zona(st.zonaId) || {}).metodoAccesso) || S.metodoPassDefault();
+  },
+  /** Descrive il pass di UN visitatore: tipo, nota, istruzioni, icona. */
+  passVisitatore(v) {
+    /* Il metodo CONGELATO al momento dell'emissione vince su quello attuale
+       della zona. Un pass gia' inviato per email e' un fatto del passato: se
+       il FM cambia il varco domani, il codice consegnato ieri non puo'
+       trasformarsi in una ricevuta a schermo. La derivazione resta solo per
+       i record del seed, che non hanno il campo. */
+    const metodo = (v && v.metodoPass) || S.metodoPerVisitatore(v);
+    const def = TIPI_METODO_ACCESSO[metodo] || TIPI_METODO_ACCESSO.app;
+    const tp = TIPI_PASS[def.tipoPass] || TIPI_PASS.ricevuta;
+    return {
+      metodo, metodoLabel: def.label, tipo: def.tipoPass,
+      nota: def.notaPass || null, istruzioni: tp.istruzioni, icona: tp.icona, tipoLabel: tp.label
+    };
+  },
+
+  /** Il varco chiude la sosta da solo? Per ora solo ANPR. */
+  checkOutAutomatico(stalloId) {
+    const m = S.metodoAccessoPerStallo(stalloId);
+    return !!(TIPI_METODO_ACCESSO[m] || {}).checkOutAuto;
+  },
+
   /** Una riga per zona: metodo, livello di intervento, check-in e check-out. */
   modalitaAccessoPerZona() {
     return AppState.zone.map(z => {
@@ -1970,6 +2028,32 @@ const S = {
   prenotazione(dipendenteId, dataISO) {
     return AppState.prenotazioni.find(p => p.dipendenteId === dipendenteId && p.data === dataISO && p.stato !== 'annullata') || null;
   },
+  /** TUTTE le prenotazioni attive di un dipendente in un giorno. In modalita'
+      giornaliera ne esiste al massimo una e questo array ha 0 o 1 elementi;
+      in modalita' turni puo' averne piu' di una (doppio turno). Ordinate per
+      ora di inizio, cosi' i badge impilati escono nell'ordine della giornata. */
+  prenotazioniGiorno(dipendenteId, dataISO) {
+    return AppState.prenotazioni
+      .filter(p => p.dipendenteId === dipendenteId && p.data === dataISO && p.stato !== 'annullata')
+      .sort((a, b) => S.minutiDa(a.oraInizio || '00:00') - S.minutiDa(b.oraInizio || '00:00'));
+  },
+  /** I turni gia' prenotati da questa persona in questo giorno. */
+  turniPrenotati(dipendenteId, dataISO) {
+    return S.prenotazioniGiorno(dipendenteId, dataISO).filter(p => p.turnoId).map(p => p.turnoId);
+  },
+  maxTurniPerDipendente() { return AppState.config.prenotazioni.maxTurniPerDipendente || 3; },
+  /** Due turni si accavallano? Gestisce il turno che scavalca la mezzanotte
+      (23:00-07:00) srotolandolo su 24h, come turnoCorrente(). */
+  turniSiSovrappongono(a, b) {
+    if (!a || !b) return false;
+    if (a.id === b.id) return true;
+    const range = (t) => {
+      const i = S.minutiDa(t.inizio), f = S.minutiDa(t.fine);
+      return f > i ? [[i, f]] : [[i, 1440], [0, f]];
+    };
+    return range(a).some(([i1, f1]) => range(b).some(([i2, f2]) => i1 < f2 && i2 < f1));
+  },
+
   prenotazioniDipendente(dipendenteId, daISO) {
     return AppState.prenotazioni
       .filter(p => p.dipendenteId === dipendenteId && p.stato !== 'annullata' && (!daISO || p.data >= daISO))
@@ -2007,7 +2091,18 @@ const S = {
     const pagina = Math.min(AppState.ui.prenotazioniPagina || 0, pagine - 1);
     const da = pagina * per;
     const righe = tutti.slice(da, da + per)
-      .map(d => ({ dipendente: d, celle: giorni.map(iso => ({ iso, prenotazione: S.prenotazione(d.id, iso) })) }));
+      /* `prenotazione` resta per la modalita' giornaliera e per tutto cio' che
+         gia' la legge; `prenotazioni` e' l'elenco completo, che in modalita'
+         turni puo' contenere piu' di una voce. Una riga per dipendente,
+         sempre: mai righe duplicate per la stessa persona. */
+      .map(d => ({
+        dipendente: d,
+        celle: giorni.map(iso => ({
+          iso,
+          prenotazione: S.prenotazione(d.id, iso),
+          prenotazioni: S.prenotazioniGiorno(d.id, iso)
+        }))
+      }));
     return { righe, pagina, pagine, totale: tutti.length, da: tutti.length ? da + 1 : 0, a: Math.min(da + per, tutti.length) };
   },
 
@@ -2170,6 +2265,8 @@ const S = {
         'Data Inizio':  v.data,
         'Data Fine':    v.dataFine || v.data,
         'Codice di accesso':  v.codiceAccesso || '',
+        'QR accesso':        v.codiceQR || '',
+        'Tipo pass':         S.passVisitatore(v).tipoLabel,
         'Stato':        S.statoVisitatore(v.id),
         'Referente':    v.referenteId ? S.nomePersona(v.referenteId) : ''
       }));
@@ -2528,8 +2625,34 @@ const A = {
 
   /* ---- PRENOTAZIONI ---- */
   prenota({ dipendenteId, dataISO, tipo, stalloId, creataDa, turnoId }) {
-    const esistente = S.prenotazione(dipendenteId, dataISO);
-    if (esistente) A.annullaPrenotazione(esistente.id, { silent: true });
+    /* In modalita' a TURNI un doppio turno e' legittimo: chi copre mattino e
+       pomeriggio prenota due volte lo stesso giorno. Sostituire l'esistente —
+       comportamento corretto in giornaliera — cancellerebbe il primo turno.
+       Si sostituisce quindi solo quando NON si sta prenotando un turno. */
+    const perTurni = AppState.config.modalitaPrenotazione === 'turni' && !!turnoId;
+    if (perTurni) {
+      const gia = S.prenotazioniGiorno(dipendenteId, dataISO);
+      /* 1. stesso turno due volte: e' un duplicato, non un doppio turno */
+      if (gia.some(p => p.turnoId === turnoId)) {
+        return { errore: 'Questo turno è già prenotato per il giorno selezionato.' };
+      }
+      /* 2. sovrapposizione oraria diretta: due turni che si accavallano
+            impegnerebbero la persona in due posti nello stesso momento */
+      const t = S.turno(turnoId);
+      const sovrapposto = t && gia.map(p => S.turno(p.turnoId)).filter(Boolean)
+        .find(x => S.turniSiSovrappongono(x, t));
+      if (sovrapposto) {
+        return { errore: 'Si sovrappone al turno ' + sovrapposto.label + ' già prenotato.' };
+      }
+      /* 3. tetto configurabile */
+      const max = S.maxTurniPerDipendente();
+      if (gia.length >= max) {
+        return { errore: 'Hai già ' + gia.length + ' turni prenotati per questo giorno (max ' + max + ')' };
+      }
+    } else {
+      const esistente = S.prenotazione(dipendenteId, dataISO);
+      if (esistente) A.annullaPrenotazione(esistente.id, { silent: true });
+    }
     const spot = tipo === 'ufficio' ? (stalloId || S.assegnaStalloAutomatico(dipendenteId, dataISO, turnoId)) : null;
     if (tipo === 'ufficio' && !spot) { Store.emit('prenotazioni'); return { errore: 'Nessuno stallo disponibile per la data selezionata.' }; }
     const p = {
@@ -2685,10 +2808,18 @@ const A = {
       nome, azienda: azienda || '—', email,
       stalloId: spot, data, dataFine: fine, oraInizio: oraInizio || '09:00', oraFine: oraFine || '18:00',
       stato: 'atteso', zonaErrata: false, scaduto: false,
-      codiceAccesso: String(Math.floor(1000 + Math.random() * 9000)),
+      codiceAccesso: null, codiceQR: null, metodoPass: null, tipoPass: null,
       referenteId: referenteId || 'USR-0002',
       creatoIl: OGGI_ISO
     };
+    /* Il contenuto si decide DOPO aver scelto lo stallo, perche' dipende dalla
+       zona in cui e' finito: generare un PIN e poi scoprire che il varco legge
+       solo QR e' esattamente il difetto che questo blocco chiude. */
+    v.metodoPass = S.metodoPerVisitatore(v);
+    const tipoPass = S.passVisitatore(v).tipo;
+    v.tipoPass = tipoPass;
+    if (tipoPass === 'codice')  v.codiceAccesso = String(rInt(1000, 9999));
+    else if (tipoPass === 'qr') v.codiceQR = 'QR-' + v.passId.replace(/-/g, '') + '-' + data.replace(/-/g, '');
     AppState.visitatori.push(v);
     Store.emit('visitatori');
     return v;
@@ -2781,7 +2912,7 @@ const A = {
       dataFine: al < dal ? dal : al,
       stato: 'in_attesa',
       note: (note || '').trim(),
-      codiceAccesso: null,
+      codiceAccesso: null, codiceQR: null,
       esitoIlTs: null,
       /* `visto` governa il badge di notifica nell'hero: una richiesta appena
          inviata non e' una novita' da segnalare, quindi nasce gia' vista.
@@ -2807,7 +2938,7 @@ const A = {
     });
     Object.assign(r, {
       stato: 'approvata', note: note || '',
-      codiceAccesso: v.codiceAccesso, visitatoreId: v.id,
+      codiceAccesso: v.codiceAccesso, codiceQR: v.codiceQR, metodoPass: v.metodoPass, visitatoreId: v.id,
       /* Le date si riscrivono DAL PASS creato, non si danno per scontate:
          se creaPassVisitatore() normalizzasse l'intervallo, la richiesta
          mostrerebbe altrimenti giorni diversi da quelli davvero concessi. */
@@ -3369,6 +3500,6 @@ global.PC.Utils = {
   iniziali, nextId, rInt, toCSV,
   isLavorativo, giorniLavorativi
 };
-global.PC.Domini = { TIPO_STALLO, DISPONIBILITA, STATO_STALLO, METODO_ACCESSO, METODI_ZONA, TIPI_METODO_ACCESSO, LIVELLO_CHECKIN, TIPI_BARRIERA, TIPO_SEGNALAZIONE, DIPARTIMENTI, RUOLI, PERMISSIONS, STATO_ACCOUNT, TIPI_HW };
+global.PC.Domini = { TIPO_STALLO, DISPONIBILITA, STATO_STALLO, METODO_ACCESSO, METODI_ZONA, TIPI_METODO_ACCESSO, TIPI_PASS, LIVELLO_CHECKIN, TIPI_BARRIERA, TIPO_SEGNALAZIONE, DIPARTIMENTI, RUOLI, PERMISSIONS, STATO_ACCOUNT, TIPI_HW };
 
 })(window);

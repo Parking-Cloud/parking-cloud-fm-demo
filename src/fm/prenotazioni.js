@@ -99,14 +99,25 @@ function cella(c, dip) {
   if (p.tipo === 'sw') {
     return `<div class="bk-slot s-sw"${UI.act('cella-prenota', params)} title="Smart Working">SW</div>`;
   }
-  /* In modalita' a turni la cella dice ANCHE quale turno: senza, due
-     prenotazioni sullo stesso stallo nello stesso giorno sarebbero
-     indistinguibili, che e' esattamente cio' che la modalita' introduce. */
-  if (State.config.modalitaPrenotazione === 'turni' && p.turnoId) {
-    const t = S.turno(p.turnoId);
-    const cls = { mattino: 't-mattino', pomeriggio: 't-pomeriggio', notte: 't-notte' }[p.turnoId] || 't-altro';
-    return `<div class="bk-slot s-turno ${cls}"${UI.act('cella-prenota', params)} title="${UI.esc(p.stalloId + ' · ' + (t ? t.label + ' ' + t.inizio + '–' + t.fine : p.turnoId))}">
-      <span class="bk-stallo">${UI.esc(p.stalloId)}</span><span class="bk-turno">${UI.esc(t ? t.label : p.turnoId)}</span></div>`;
+  /* In modalita' a turni la cella dice ANCHE quale turno, e ne mostra PIU' DI
+     UNO se la persona copre un doppio turno. Una riga per dipendente resta la
+     regola: i turni si impilano dentro la cella, non generano righe nuove. */
+  if (State.config.modalitaPrenotazione === 'turni') {
+    const conTurno = (c.prenotazioni || [p]).filter(x => x.turnoId);
+    if (conTurno.length) {
+      const badge = (x) => {
+        const t = S.turno(x.turnoId);
+        const cls = { mattino: 't-mattino', pomeriggio: 't-pomeriggio', notte: 't-notte' }[x.turnoId] || 't-altro';
+        return `<div class="bk-slot s-turno ${cls}"${UI.act('cella-turno', { prenotazioneId: x.id })} title="${UI.esc(x.stalloId + ' · ' + (t ? t.label + ' ' + t.inizio + '–' + t.fine : x.turnoId))}">
+          <span class="bk-stallo">${UI.esc(x.stalloId)}</span><span class="bk-turno">${UI.esc(t ? t.label : x.turnoId)}</span></div>`;
+      };
+      /* il "+" resta raggiungibile: senza, il secondo turno non si potrebbe
+         aggiungere dalla griglia */
+      const puoAggiungere = conTurno.length < S.maxTurniPerDipendente();
+      return `<div class="bk-turni-stack">${conTurno.map(badge).join('')}${
+        puoAggiungere ? `<div class="bk-add-turno"${UI.act('cella-prenota', Object.assign({}, params, { nuovo: '1' }))} title="Aggiungi un turno">+</div>` : ''
+      }</div>`;
+    }
   }
   /* violazione: lo stallo prenotato risulta occupato abusivamente */
   const stato = S.statoStallo(p.stalloId, c.iso);
@@ -115,7 +126,10 @@ function cella(c, dip) {
        la cella da sola direbbe solo che lo stallo era riservato. */
     const dot = p.checkOutTs ? '<span class="bk-dot bk-dot-out">●</span>'
       : p.checkInTs ? '<span class="bk-dot bk-dot-in">●</span>' : '';
-  return `<div class="bk-slot ${viol ? 's-viol' : 's-book'}"${UI.act('cella-prenota', params)} title="${UI.esc(p.stalloId + (viol ? ' — occupazione abusiva in corso' : ''))}">${UI.esc(p.stalloId)}${dot}${viol ? ' ⚠' : ''}</div>`;
+  /* La fascia sta nel tooltip: senza, una modifica agli orari non produce
+     alcun effetto visibile e sembra non essere stata salvata. */
+  const fascia = p.oraInizio && p.oraFine ? ' · ' + p.oraInizio + '–' + p.oraFine : '';
+  return `<div class="bk-slot ${viol ? 's-viol' : 's-book'}"${UI.act('cella-prenota', params)} title="${UI.esc(p.stalloId + fascia + (viol ? ' — occupazione abusiva in corso' : ''))}">${UI.esc(p.stalloId)}${dot}${viol ? ' ⚠' : ''}</div>`;
 }
 
 /* ---- handler ---------------------------------------------------------- */
@@ -129,18 +143,70 @@ UI.on('azzera-filtro-pren', () => A.resetFiltri('dipendenti'));
 UI.on('pagina-pren', d => A.setPaginaPrenotazioni(parseInt(d.pagina, 10)));
 
 UI.on('cella-prenota', d => {
+  /* Su una cella gia' prenotata si apre il DETTAGLIO. Riaprire "Nuova
+     prenotazione" significava passare da prenota(), che annulla l'esistente:
+     bastava un click esplorativo per riassegnare lo stallo e perdere il
+     check-in. La creazione resta per le celle libere. */
+  /* Il "+" della pila turni chiede esplicitamente una prenotazione NUOVA. */
+  if (d.nuovo) { apriNuovaPrenotazione(d.dipendenteId, d.giornoIso); return; }
+  const p = S.prenotazione(d.dipendenteId, d.giornoIso);
+  if (p) { Modals.open('bk-det', { prenotazioneId: p.id }); return; }
+  apriNuovaPrenotazione(d.dipendenteId, d.giornoIso);
+});
+
+/* Un badge nella pila punta a UNA prenotazione precisa: con piu' turni nello
+   stesso giorno, risalire dal solo (dipendente, data) sarebbe ambiguo. */
+UI.on('cella-turno', d => Modals.open('bk-det', { prenotazioneId: d.prenotazioneId }));
+
+function apriNuovaPrenotazione(dipendenteId, giornoIso) {
   Modals.open('add-bk', {});
-  Modals.form = { dipendente: d.dipendenteId, data: d.giornoIso, tipo: 'ufficio', stallo: '' };
+  Modals.form = {
+    dipendente: dipendenteId, data: giornoIso, tipo: 'ufficio', stallo: '',
+    oraInizio: '09:00', oraFine: '18:00'
+  };
   Modals._render();
+}
+
+UI.on('fm-aggiorna-orari', d => {
+  Modals._collect();
+  const r = A.modificaOrariPrenotazione({
+    prenotazioneId: d.prenotazioneId,
+    oraInizio: Modals.form.oraInizio, oraFine: Modals.form.oraFine
+  });
+  if (r && r.errore) { UI.toast('⚠ ' + r.errore); return; }
+  Modals.close();
+  const dip = S.dipendente(r.dipendenteId);
+  UI.toast(`🕓 ${dip ? dip.nome : 'Prenotazione'}: fascia aggiornata · ${r.oraInizio}–${r.oraFine}`);
+});
+
+UI.on('fm-cancella-pren', d => {
+  const p = S.prenotazioneById(d.prenotazioneId);
+  if (!p) return;
+  const dip = S.dipendente(p.dipendenteId);
+  A.annullaPrenotazione(p.id);
+  Modals.close();
+  UI.toast(`Prenotazione di ${dip ? dip.nome : '—'} del ${U.fmtDM(U.fromISO(p.data))} cancellata`);
+});
+
+/* Sostituire e' un'operazione DIVERSA dal modificare: qui si accetta
+   consapevolmente di ricreare la prenotazione (stallo riassegnato, check-in
+   azzerato). Prima era l'unico comportamento possibile, e non era dichiarato. */
+UI.on('fm-sostituisci-pren', d => {
+  Modals.close();
+  apriNuovaPrenotazione(d.dipendenteId, d.giornoIso);
 });
 
 UI.on('crea-prenotazione-fm', () => {
   Modals._collect();
   const fm = Modals.form;
   if (!fm.dipendente) { UI.toast('Seleziona un dipendente'); return; }
+  const perTurni = State.config.modalitaPrenotazione === 'turni';
+  const tipo = fm.tipo || 'ufficio';
+  if (perTurni && tipo === 'ufficio' && !fm.turnoId) { UI.toast('Seleziona il turno'); return; }
   const r = A.prenota({
     dipendenteId: fm.dipendente, dataISO: fm.data,
-    tipo: fm.tipo || 'ufficio', stalloId: fm.stallo || null, creataDa: 'fm'
+    tipo, stalloId: fm.stallo || null, creataDa: 'fm',
+    turnoId: perTurni && tipo === 'ufficio' ? fm.turnoId : null
   });
   if (r.errore) { UI.toast('⚠ ' + r.errore); return; }
   /* La fascia si applica DOPO: `prenota` scrive gli orari standard, e qui si
@@ -154,9 +220,10 @@ UI.on('crea-prenotazione-fm', () => {
   }
   Modals.close();
   const dip = S.dipendente(fm.dipendente);
+  const t = r.turnoId ? S.turno(r.turnoId) : null;
   UI.toast(r.tipo === 'sw'
     ? `✓ Smart Working registrato per ${dip.nome} il ${U.fmtDM(U.fromISO(fm.data))}`
-    : `✓ ${dip.nome}: stallo ${r.stalloId} prenotato per il ${U.fmtDM(U.fromISO(fm.data))}`);
+    : `✓ ${dip.nome}: stallo ${r.stalloId}${t ? ' · ' + t.label : ''} prenotato per il ${U.fmtDM(U.fromISO(fm.data))}`);
 });
 
 })(window);

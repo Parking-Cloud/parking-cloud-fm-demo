@@ -23,7 +23,7 @@ Stato del progetto al **19/08/2026**.
 | Amministrazione | `fm/amministrazione.js` | ✅ solo Admin — utenti piattaforma + parcheggi, modifica sede con conferma sulle riduzioni, ripristino dati demo |
 | Vista Dipendente | `employee/index.js` | ✅ calendario, mappa read-only, prenotazioni |
 
-### Modali registrati — 34 su 34
+### Modali registrati — 36 su 36
 
 `stallo-det` · `acc-det` · `dip-det` · `add-user` · `sblocco` · `dip-pass` ·
 `req-pass` · `add-vis` · `vis-det` · `seg` · `hw` · `add-stallo` · `add-bk` ·
@@ -31,7 +31,7 @@ Stato del progetto al **19/08/2026**.
 `emp-profile` · `emp-history` · `add-platform-user` · `platform-user-det` ·
 `import-dipendenti` · `dip-creato` · `conferma-riduzione` · `conferma-ripristino` ·
 `emp-richiedi-pass` · `emp-mostra-prenotazione` · `seg-collegata` ·
-`lista-attesa` · `emp-sel-turno` · `add-barriera` · `emp-prenot-det`
+`lista-attesa` · `emp-sel-turno` · `add-barriera` · `emp-prenot-det` · `bk-det`
 
 Tutti ricevono il contesto dall'elemento cliccato e leggono da `AppState`
 all'apertura: nessun contenuto statico.
@@ -68,6 +68,111 @@ Generati da PRNG con seed fisso `20260817`: **stabili a ogni reload**.
 ---
 
 ## STORICO MODIFICHE
+
+## [19/08/2026] — CODE-21 · Pass per modalità, check-out ANPR, doppio turno
+> Tre difetti con la stessa radice: il sistema dava per scontato che esistesse
+> **un** modo di entrare, **un** modo di uscire e **una** prenotazione al giorno.
+> Nessuna delle tre cose è vera in un parcheggio reale.
+
+### MODIFICA A — il pass visitatore segue il metodo della zona
+- `TIPI_METODO_ACCESSO` acquista `tipoPass` (`codice` | `qr` | `ricevuta`) e
+  `notaPass`. Nuovo dominio `TIPI_PASS` con icona e istruzioni.
+- `creaPassVisitatore()` genera il contenuto **dopo** aver scelto lo stallo,
+  perché è la zona a decidere: PIN/locker → codice a 4 cifre; QR → stringa
+  `QR-VIS0182-20260823`; tutti gli altri → **nessun codice**, il pass è una
+  ricevuta. Un PIN davanti a un lettore QR non serve a niente.
+- Nuovi selectors: `tipoPassPerZona`, `metodoPassDefault`, `metodoPerVisitatore`,
+  `passVisitatore`.
+- Un pass **senza stallo** non blocca nulla: usa il metodo di Zona V, e se la
+  zona non esiste più il metodo più diffuso fra le zone rimaste.
+- `modals.js`: renderer unico `boxPass()` per `add-vis` e `vis-det` — codice,
+  QR o **card "Ricevuta di accesso"** con visitatore, azienda, referente, data,
+  fascia e stallo, più la nota in blu dove prevista.
+- `employee/index.js`: `contenutoPassRichiesta()` mostra al dipendente lo stesso
+  contenuto nella tab "Pass Visitatori".
+- Seed: `codiceQR: null` su tutti i visitatori esistenti, **nessun ricalcolo**.
+- Export: nuove colonne `QR accesso` e `Tipo pass`.
+
+### MODIFICA B — sotto ANPR il check-out lo fa il varco
+- `checkOutAuto: true` solo su `targa`; nuovo selector `checkOutAutomatico()`.
+- Dopo il check-in in una zona ANPR: testo *"Check-out automatico via
+  riconoscimento targa all'uscita"* e pulsante **piccolo** di fallback. Altrove
+  resta il "⏹ Check-out" grande.
+
+### MODIFICA C — l'estensione prenotazione FM
+**Diagnosi.** Non era un salvataggio che falliva: un "Aggiorna orari" lato FM
+**non esisteva**. Cliccando una cella prenotata si riapriva *Nuova prenotazione*,
+e `prenota()` come prima riga annulla l'esistente. Confermando si otteneva ID
+nuovo, **stallo riassegnato** e **check-in perso** — senza alcun avviso. Gli
+orari mostrati erano sempre 09:00–18:00, mai quelli veri, quindi anche quando
+il salvataggio riusciva non c'era modo di accorgersene.
+
+- Nuovo modale **`bk-det`**: stato, check-in, orari **pre-caricati dai valori
+  reali**, "Aggiorna orari", "Cancella". La cella prenotata apre questo; la
+  cella libera continua ad aprire `add-bk`.
+- "Sostituisci prenotazione" resta disponibile, ma ora è una scelta **esplicita**
+  e dichiarata, non l'unico comportamento possibile.
+- La cella mostra la fascia nel tooltip: senza, la modifica non era verificabile.
+- **Vista dipendente: nessun bug.** `emp-aggiorna-orari` chiamava già
+  correttamente l'action, con `_collect()` prima e `Store.emit` dentro.
+
+### MODIFICA D — turno nella nuova prenotazione FM
+- `add-bk` in modalità turni: select **Turno** obbligatorio, con label e orari;
+  gli stalli proposti sono quelli liberi **in quel turno**, non nella giornata.
+- In modalità giornaliera il campo non compare e nulla cambia.
+
+### MODIFICA E — doppio turno per lo stesso dipendente
+- `prenota()` non sostituisce più l'esistente **quando si prenota un turno**.
+  Tre controlli, in quest'ordine: stesso turno già prenotato → duplicato;
+  sovrapposizione oraria (`turniSiSovrappongono`, con gestione della mezzanotte)
+  → conflitto; oltre `maxTurniPerDipendente` → tetto.
+- Nuovi selectors `prenotazioniGiorno()` e `turniPrenotati()`. `prenotazione()`
+  resta invariata: la modalità giornaliera non cambia di una riga.
+- `config.prenotazioni.maxTurniPerDipendente: 3`, editabile in Config → Policy
+  (numerico, min 1, max 5).
+- Griglia FM: **una sola riga per dipendente**, badge impilati nella cella, "+"
+  per aggiungere un turno finché il tetto lo consente. Ogni badge apre il
+  **proprio** turno.
+- Vista dipendente: la card del giorno elenca tutti i turni ("✓ 2 turni") e in
+  modalità turni il click riporta sempre alla schermata di scelta — altrimenti
+  il secondo turno sarebbe irraggiungibile. `emp-book` marca i turni già
+  prenotati con il badge "Già prenotato".
+
+### Fix
+- **Il tipo di pass veniva ri-derivato a ogni render.** Se il FM cambiava il
+  metodo della zona dopo l'emissione, un pass già inviato per email cambiava
+  tipo da solo e un codice consegnato diventava una ricevuta a schermo. Ora
+  `metodoPass`/`tipoPass` sono **congelati** sul visitatore alla creazione, e
+  `passVisitatore()` li preferisce; la derivazione resta solo per il seed.
+- `crea-visitatore` scriveva il codice digitato a mano anche sui pass senza
+  codice, producendo un numero che nessun varco legge.
+
+### Flussi verificati
+- **TEST A** — eseguito **due volte**: come baseline prima di toccare il codice
+  (25/25 ✅) e come regressione finale (21/21 ✅, zero errori JS). In più: la
+  griglia giornaliera non produce stack di turni, `add-bk` non mostra il campo
+  Turno, il dipendente in giornaliera continua ad aprire il dettaglio
+- **TEST B** — 5/5: `pin` → codice, `qr` → QR, `guardiano` → ricevuta,
+  `bluetooth` → ricevuta + "Il referente verrà ad accoglierti", `targa` →
+  ricevuta + "Accesso automatico via riconoscimento targa". Coerente in
+  `add-vis`, `vis-det` e tab dipendente
+- **TEST C** — 6/6: `targa` → testo automatico + fallback piccolo; `pin` e
+  `bluetooth` → "⏹ Check-out" grande; l'uscita si registra in tutti i casi
+- **TEST D** — 8/8 FM: dettaglio invece di "Nuova", orari pre-caricati, salvati,
+  **id/stallo/check-in intatti**, modal chiuso dopo, tooltip aggiornato,
+  validazione inversa. Dipendente 3/3
+- **TEST E** — select turno con label e orari, prenotazione creata col turno
+  scelto, badge in griglia
+- **TEST F** — 8/8: 2° e 3° turno si aggiungono, duplicato bloccato,
+  sovrapposizione bloccata, tetto rispettato e riattivato alzandolo, una sola
+  riga per dipendente, badge impilati, click sul badge giusto
+
+### Flussi NON verificati (da controllare manualmente)
+- Resa **visiva** della pila di 3 badge nella cella FM su schermi stretti
+- Email reale al visitatore con QR o ricevuta (non verificabile in demo)
+- Download del `.xlsx` con le nuove colonne (SheetJS da CDN)
+
+---
 
 ## [19/08/2026] — CODE-20 · Sede modificabile, barriere vs metodi, check-in per livello
 > Il blocco più strutturale dal CODE-18: separa due cose che erano una sola.

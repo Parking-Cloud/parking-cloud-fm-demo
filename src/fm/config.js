@@ -416,7 +416,8 @@ UI.on('salva-policy', () => {
     durataMaxDipendenteOre: parseInt(fm.durataMaxDipendenteOre, 10) || 10,
     notificaDurataOre: parseInt(fm.notificaDurataOre, 10) || 8,
     durataMaxEvOre: parseInt(fm.durataMaxEvOre, 10) || 4,
-    sogliaViolazioni: parseInt(fm.sogliaViolazioni, 10) || 3
+    sogliaViolazioni: parseInt(fm.sogliaViolazioni, 10) || 3,
+    maxTurniPerDipendente: Math.min(5, Math.max(1, parseInt(fm.maxTurniPerDipendente, 10) || 3))
   });
   Modals.close();
   UI.toast('✓ Policy salvata e applicata a tutti i dipendenti');
@@ -457,7 +458,10 @@ UI.on('approva-req', d => {
   Modals._collect();
   const v = A.approvaRichiestaPass(d.richiestaId, Modals.form.note);
   Modals.close();
-  UI.toast(`✓ Approvato · codice ${v.codiceAccesso} inviato a ${v.email}`);
+  const pv = S.passVisitatore(v);
+  UI.toast(pv.tipo === 'codice' ? `✓ Approvato · codice ${v.codiceAccesso} inviato a ${v.email}`
+    : pv.tipo === 'qr' ? `✓ Approvato · QR ${v.codiceQR} inviato a ${v.email}`
+    : `✓ Approvato · ricevuta inviata a ${v.email} · ${pv.metodoLabel}`);
 });
 UI.on('rifiuta-req', d => {
   /* _collect() PRIMA di leggere il form: senza, la motivazione scritta dal FM

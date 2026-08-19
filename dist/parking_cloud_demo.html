@@ -878,6 +878,38 @@ input[type=range]{accent-color:var(--blue)}
 .modal-sec-tit{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;
   color:var(--text-muted);margin:16px 0 8px;padding-top:12px;border-top:1px solid var(--border)}
 
+/* ---- Contenuto del pass visitatore (CODE-21 A) ---- */
+.code-val.code-qr{font-size:15px;letter-spacing:1px}
+.ricevuta-box{border:1px solid var(--border);border-left:3px solid var(--blue);
+  border-radius:var(--r);padding:14px 16px;margin-top:12px;background:var(--bg-card)}
+.ricevuta-hd{display:flex;align-items:center;gap:8px;font-weight:800;font-size:13px;margin-bottom:10px}
+.ricevuta-metodo{margin-left:auto;font-size:10.5px;font-weight:700;color:var(--blue);
+  background:var(--blue-light);border-radius:20px;padding:2px 9px}
+.ricevuta-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px 16px}
+.ricevuta-grid span{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted)}
+.ricevuta-grid strong{font-size:12.5px}
+.ricevuta-nota{margin-top:11px;padding:8px 11px;border-radius:8px;
+  background:var(--blue-light);color:var(--blue);font-size:11.5px;font-weight:700}
+.ricevuta-istr{margin-top:9px;font-size:11px;color:var(--text-muted)}
+
+.emp-code-val.emp-code-qr{font-size:14px;letter-spacing:.5px}
+.emp-ricevuta{margin-top:10px;border:1px solid var(--border);border-left:3px solid var(--blue);
+  border-radius:10px;padding:12px 14px}
+.emp-ricevuta-hd{font-weight:800;font-size:12.5px;margin-bottom:8px}
+.emp-ricevuta-riga{display:flex;justify-content:space-between;gap:12px;font-size:12px;padding:3px 0}
+.emp-ricevuta-riga span{color:var(--text-muted);font-size:11px}
+.emp-ricevuta-nota{margin-top:9px;padding:7px 10px;border-radius:8px;
+  background:var(--blue-light);color:var(--blue);font-size:11.5px;font-weight:700}
+.emp-ricevuta-istr{margin-top:8px;font-size:11px;color:var(--text-muted)}
+
+/* ---- Turni multipli nella stessa cella (CODE-21 E) ---- */
+.bk-turni-stack{display:flex;flex-direction:column;gap:3px}
+.bk-turni-stack .bk-slot{margin:0}
+.bk-add-turno{border:1px dashed var(--border);border-radius:6px;text-align:center;
+  font-size:12px;font-weight:800;color:var(--text-muted);cursor:pointer;padding:1px 0;line-height:1.5}
+.bk-add-turno:hover{border-color:var(--blue);color:var(--blue);background:var(--blue-light)}
+.emp-day .day-spot + .day-spot{margin-top:2px}
+
 </style>
 </head>
 <body>
@@ -1158,37 +1190,52 @@ const STATO_STALLO = {
   bloccato:     { label: 'Bloccato',             cls: 'ms-maint' }
 };
 
-/* I metodi di accesso, classificati per QUANTO deve fare il dipendente.
-   E' la distinzione che conta in fase di vendita: "quanto e' comodo entrare",
-   non quale marca di hardware c'e' sul cancello.
-     zero    -> non fa nulla, il varco lo riconosce
-     azione  -> un gesto rapido (avvicina, scansiona), nessun dato da digitare
-     manuale -> deve digitare, mostrare qualcosa o farsi aprire
-   Il check-out manuale dall'app resta SEMPRE disponibile come fallback,
-   qualunque sia il metodo di ingresso. */
+/* Che cosa riceve un VISITATORE dipende dal metodo della zona in cui gli si
+   assegna lo stallo. Un codice numerico è inutile davanti a un lettore QR, e
+   davanti a un varco Bluetooth — che si apre solo con l'app del dipendente —
+   nessun codice può funzionare: lì il pass è una ricevuta, e chi apre è il
+   referente. `notaPass` dice al visitatore cosa aspettarsi davvero. */
 const TIPI_METODO_ACCESSO = {
-  targa:       { label: 'ANPR (riconoscimento targa)', tipoCheckIn: 'zero',
+  targa:       { label: 'ANPR (riconoscimento targa)', tipoCheckIn: 'zero',    checkOutAuto: true,
+                 tipoPass: 'ricevuta', notaPass: 'Accesso automatico via riconoscimento targa',
                  desc: 'Accesso rilevato automaticamente dalla telecamera. Nessuna azione richiesta dal dipendente.' },
-  qr:          { label: 'QR Code (scansione app)',     tipoCheckIn: 'azione',
+  qr:          { label: 'QR Code (scansione app)',     tipoCheckIn: 'azione',  checkOutAuto: false,
+                 tipoPass: 'qr',
                  desc: 'Il dipendente inquadra il QR con l\'app.' },
-  bluetooth:   { label: 'Bluetooth (avvicina app)',    tipoCheckIn: 'azione',
+  bluetooth:   { label: 'Bluetooth (avvicina app)',    tipoCheckIn: 'azione',  checkOutAuto: false,
+                 tipoPass: 'ricevuta', notaPass: 'Il referente verrà ad accoglierti',
                  desc: 'Il varco si apre avvicinando lo smartphone.' },
-  badge:       { label: 'Badge / RFID',                tipoCheckIn: 'azione',
+  badge:       { label: 'Badge / RFID',                tipoCheckIn: 'azione',  checkOutAuto: false,
+                 tipoPass: 'ricevuta', notaPass: 'Il referente verrà ad accoglierti',
                  desc: 'Il dipendente avvicina il badge al lettore.' },
-  pin:         { label: 'PIN Keypad',                  tipoCheckIn: 'manuale',
+  pin:         { label: 'PIN Keypad',                  tipoCheckIn: 'manuale', checkOutAuto: false,
+                 tipoPass: 'codice',
                  desc: 'Il dipendente digita il PIN sul tastierino.' },
-  guardiano:   { label: 'Guardiano (con ricevuta)',    tipoCheckIn: 'manuale',
+  guardiano:   { label: 'Guardiano (con ricevuta)',    tipoCheckIn: 'manuale', checkOutAuto: false,
+                 tipoPass: 'ricevuta',
                  desc: 'Accesso autorizzato dal personale in guardiola.' },
-  telecomando: { label: 'Telecomando',                 tipoCheckIn: 'manuale',
+  telecomando: { label: 'Telecomando',                 tipoCheckIn: 'manuale', checkOutAuto: false,
+                 tipoPass: 'ricevuta', notaPass: 'Il referente verrà ad accoglierti',
                  desc: 'Apertura con telecomando personale.' },
-  locker:      { label: 'Locker (codice/chiave)',      tipoCheckIn: 'manuale',
+  locker:      { label: 'Locker (codice/chiave)',      tipoCheckIn: 'manuale', checkOutAuto: false,
+                 tipoPass: 'codice',
                  desc: 'Ritiro chiave o codice da armadietto.' },
-  prossimita:  { label: 'Sensore prossimità',          tipoCheckIn: 'manuale',
+  prossimita:  { label: 'Sensore prossimità',          tipoCheckIn: 'manuale', checkOutAuto: false,
+                 tipoPass: 'ricevuta',
                  desc: 'Rilevazione a corto raggio con conferma.' },
-  libero:      { label: 'Libero (senza controllo)',    tipoCheckIn: 'manuale',
+  libero:      { label: 'Libero (senza controllo)',    tipoCheckIn: 'manuale', checkOutAuto: false,
+                 tipoPass: 'ricevuta',
                  desc: 'Nessun varco: accesso libero.' },
-  app:         { label: 'App mobile',                  tipoCheckIn: 'manuale',
+  app:         { label: 'App mobile',                  tipoCheckIn: 'manuale', checkOutAuto: false,
+                 tipoPass: 'ricevuta',
                  desc: 'Apertura dall\'app del dipendente.' }
+};
+
+/* I tre contenuti possibili di un pass visitatore. */
+const TIPI_PASS = {
+  codice:   { label: 'Codice numerico', icona: '🔑', istruzioni: 'Digita il codice sul tastierino all\'ingresso' },
+  qr:       { label: 'QR Code',         icona: '📱', istruzioni: 'Mostra questo codice al lettore QR all\'ingresso' },
+  ricevuta: { label: 'Ricevuta',        icona: '🧾', istruzioni: 'Mostra questa ricevuta al guardiano o al referente' }
 };
 /* Il check-out non dipende dal metodo: e' sempre manuale dall'app finche'
    l'integrazione hardware non lo automatizza. */
@@ -1666,7 +1713,7 @@ function buildVisitatori(dipendenti) {
     stato: v.stato,                     // atteso | dentro | uscito | revocato
     zonaErrata: !!v.zonaErrata,
     scaduto: !!v.scaduto,
-    codiceAccesso: String(rInt(1000, 9999)),
+    codiceAccesso: String(rInt(1000, 9999)), codiceQR: null,
     referenteId: i % 3 === 0 ? fmId : (dipendenti[(i % 12)] || dipendenti[0]).id,
     creatoIl: OGGI_ISO
   }));
@@ -1685,7 +1732,7 @@ function buildVisitatori(dipendenti) {
         stalloId: 'V-' + String((i % 16) + 1).padStart(2, '0'),
         data: isoG, oraInizio: base.da, oraFine: base.a,
         stato: 'uscito', zonaErrata: false, scaduto: false,
-        codiceAccesso: String(rInt(1000, 9999)),
+        codiceAccesso: String(rInt(1000, 9999)), codiceQR: null,
         referenteId: fmId, creatoIl: isoG
       });
     }
@@ -1933,6 +1980,7 @@ function buildConfig() {
     tolleranzaCambioTurnoMin: 30,
     prenotazioni: {
       finestraGiorniLavorativi: 10, // finestra prenotazione dipendente, in giorni lavorativi (oggi incluso)
+      maxTurniPerDipendente: 3,     // solo in modalita' turni: doppi turni consentiti fino a questo numero
       noShowMinuti: 30,
       durataMaxDipendenteOre: 10,
       notificaDurataOre: 8,
@@ -2008,7 +2056,7 @@ function buildRichiestePass(dipendenti) {
     dataFine:   toISO(addDays(OGGI, 2)),
     stato: 'in_attesa',
     note: '',
-    codiceAccesso: null,
+    codiceAccesso: null, codiceQR: null,
     esitoIlTs: null,
     visto: true
   }];
@@ -2865,6 +2913,48 @@ const S = {
   },
   metodoDef(metodo) { return TIPI_METODO_ACCESSO[metodo] || TIPI_METODO_ACCESSO.app; },
 
+  /** Che cosa riceve un visitatore che parcheggia in questa zona. */
+  tipoPassPerZona(zonaId) {
+    const z = S.zona(zonaId);
+    const m = (z && z.metodoAccesso) || S.metodoPassDefault();
+    return (TIPI_METODO_ACCESSO[m] || TIPI_METODO_ACCESSO.app).tipoPass;
+  },
+  /** Metodo da usare quando un pass non ha (ancora) uno stallo: quello della
+      zona visitatori, o — se non esiste piu' — il piu' diffuso fra le zone.
+      Non si blocca mai la creazione di un pass per questo. */
+  metodoPassDefault() {
+    const zv = S.zona('V');
+    if (zv && zv.metodoAccesso) return zv.metodoAccesso;
+    const conta = {};
+    AppState.zone.forEach(z => { const m = z.metodoAccesso || 'app'; conta[m] = (conta[m] || 0) + 1; });
+    return Object.keys(conta).sort((a, b) => conta[b] - conta[a])[0] || 'app';
+  },
+  metodoPerVisitatore(v) {
+    const st = v && v.stalloId ? S.stallo(v.stalloId) : null;
+    return (st && (S.zona(st.zonaId) || {}).metodoAccesso) || S.metodoPassDefault();
+  },
+  /** Descrive il pass di UN visitatore: tipo, nota, istruzioni, icona. */
+  passVisitatore(v) {
+    /* Il metodo CONGELATO al momento dell'emissione vince su quello attuale
+       della zona. Un pass gia' inviato per email e' un fatto del passato: se
+       il FM cambia il varco domani, il codice consegnato ieri non puo'
+       trasformarsi in una ricevuta a schermo. La derivazione resta solo per
+       i record del seed, che non hanno il campo. */
+    const metodo = (v && v.metodoPass) || S.metodoPerVisitatore(v);
+    const def = TIPI_METODO_ACCESSO[metodo] || TIPI_METODO_ACCESSO.app;
+    const tp = TIPI_PASS[def.tipoPass] || TIPI_PASS.ricevuta;
+    return {
+      metodo, metodoLabel: def.label, tipo: def.tipoPass,
+      nota: def.notaPass || null, istruzioni: tp.istruzioni, icona: tp.icona, tipoLabel: tp.label
+    };
+  },
+
+  /** Il varco chiude la sosta da solo? Per ora solo ANPR. */
+  checkOutAutomatico(stalloId) {
+    const m = S.metodoAccessoPerStallo(stalloId);
+    return !!(TIPI_METODO_ACCESSO[m] || {}).checkOutAuto;
+  },
+
   /** Una riga per zona: metodo, livello di intervento, check-in e check-out. */
   modalitaAccessoPerZona() {
     return AppState.zone.map(z => {
@@ -2944,6 +3034,32 @@ const S = {
   prenotazione(dipendenteId, dataISO) {
     return AppState.prenotazioni.find(p => p.dipendenteId === dipendenteId && p.data === dataISO && p.stato !== 'annullata') || null;
   },
+  /** TUTTE le prenotazioni attive di un dipendente in un giorno. In modalita'
+      giornaliera ne esiste al massimo una e questo array ha 0 o 1 elementi;
+      in modalita' turni puo' averne piu' di una (doppio turno). Ordinate per
+      ora di inizio, cosi' i badge impilati escono nell'ordine della giornata. */
+  prenotazioniGiorno(dipendenteId, dataISO) {
+    return AppState.prenotazioni
+      .filter(p => p.dipendenteId === dipendenteId && p.data === dataISO && p.stato !== 'annullata')
+      .sort((a, b) => S.minutiDa(a.oraInizio || '00:00') - S.minutiDa(b.oraInizio || '00:00'));
+  },
+  /** I turni gia' prenotati da questa persona in questo giorno. */
+  turniPrenotati(dipendenteId, dataISO) {
+    return S.prenotazioniGiorno(dipendenteId, dataISO).filter(p => p.turnoId).map(p => p.turnoId);
+  },
+  maxTurniPerDipendente() { return AppState.config.prenotazioni.maxTurniPerDipendente || 3; },
+  /** Due turni si accavallano? Gestisce il turno che scavalca la mezzanotte
+      (23:00-07:00) srotolandolo su 24h, come turnoCorrente(). */
+  turniSiSovrappongono(a, b) {
+    if (!a || !b) return false;
+    if (a.id === b.id) return true;
+    const range = (t) => {
+      const i = S.minutiDa(t.inizio), f = S.minutiDa(t.fine);
+      return f > i ? [[i, f]] : [[i, 1440], [0, f]];
+    };
+    return range(a).some(([i1, f1]) => range(b).some(([i2, f2]) => i1 < f2 && i2 < f1));
+  },
+
   prenotazioniDipendente(dipendenteId, daISO) {
     return AppState.prenotazioni
       .filter(p => p.dipendenteId === dipendenteId && p.stato !== 'annullata' && (!daISO || p.data >= daISO))
@@ -2981,7 +3097,18 @@ const S = {
     const pagina = Math.min(AppState.ui.prenotazioniPagina || 0, pagine - 1);
     const da = pagina * per;
     const righe = tutti.slice(da, da + per)
-      .map(d => ({ dipendente: d, celle: giorni.map(iso => ({ iso, prenotazione: S.prenotazione(d.id, iso) })) }));
+      /* `prenotazione` resta per la modalita' giornaliera e per tutto cio' che
+         gia' la legge; `prenotazioni` e' l'elenco completo, che in modalita'
+         turni puo' contenere piu' di una voce. Una riga per dipendente,
+         sempre: mai righe duplicate per la stessa persona. */
+      .map(d => ({
+        dipendente: d,
+        celle: giorni.map(iso => ({
+          iso,
+          prenotazione: S.prenotazione(d.id, iso),
+          prenotazioni: S.prenotazioniGiorno(d.id, iso)
+        }))
+      }));
     return { righe, pagina, pagine, totale: tutti.length, da: tutti.length ? da + 1 : 0, a: Math.min(da + per, tutti.length) };
   },
 
@@ -3144,6 +3271,8 @@ const S = {
         'Data Inizio':  v.data,
         'Data Fine':    v.dataFine || v.data,
         'Codice di accesso':  v.codiceAccesso || '',
+        'QR accesso':        v.codiceQR || '',
+        'Tipo pass':         S.passVisitatore(v).tipoLabel,
         'Stato':        S.statoVisitatore(v.id),
         'Referente':    v.referenteId ? S.nomePersona(v.referenteId) : ''
       }));
@@ -3502,8 +3631,34 @@ const A = {
 
   /* ---- PRENOTAZIONI ---- */
   prenota({ dipendenteId, dataISO, tipo, stalloId, creataDa, turnoId }) {
-    const esistente = S.prenotazione(dipendenteId, dataISO);
-    if (esistente) A.annullaPrenotazione(esistente.id, { silent: true });
+    /* In modalita' a TURNI un doppio turno e' legittimo: chi copre mattino e
+       pomeriggio prenota due volte lo stesso giorno. Sostituire l'esistente —
+       comportamento corretto in giornaliera — cancellerebbe il primo turno.
+       Si sostituisce quindi solo quando NON si sta prenotando un turno. */
+    const perTurni = AppState.config.modalitaPrenotazione === 'turni' && !!turnoId;
+    if (perTurni) {
+      const gia = S.prenotazioniGiorno(dipendenteId, dataISO);
+      /* 1. stesso turno due volte: e' un duplicato, non un doppio turno */
+      if (gia.some(p => p.turnoId === turnoId)) {
+        return { errore: 'Questo turno è già prenotato per il giorno selezionato.' };
+      }
+      /* 2. sovrapposizione oraria diretta: due turni che si accavallano
+            impegnerebbero la persona in due posti nello stesso momento */
+      const t = S.turno(turnoId);
+      const sovrapposto = t && gia.map(p => S.turno(p.turnoId)).filter(Boolean)
+        .find(x => S.turniSiSovrappongono(x, t));
+      if (sovrapposto) {
+        return { errore: 'Si sovrappone al turno ' + sovrapposto.label + ' già prenotato.' };
+      }
+      /* 3. tetto configurabile */
+      const max = S.maxTurniPerDipendente();
+      if (gia.length >= max) {
+        return { errore: 'Hai già ' + gia.length + ' turni prenotati per questo giorno (max ' + max + ')' };
+      }
+    } else {
+      const esistente = S.prenotazione(dipendenteId, dataISO);
+      if (esistente) A.annullaPrenotazione(esistente.id, { silent: true });
+    }
     const spot = tipo === 'ufficio' ? (stalloId || S.assegnaStalloAutomatico(dipendenteId, dataISO, turnoId)) : null;
     if (tipo === 'ufficio' && !spot) { Store.emit('prenotazioni'); return { errore: 'Nessuno stallo disponibile per la data selezionata.' }; }
     const p = {
@@ -3659,10 +3814,18 @@ const A = {
       nome, azienda: azienda || '—', email,
       stalloId: spot, data, dataFine: fine, oraInizio: oraInizio || '09:00', oraFine: oraFine || '18:00',
       stato: 'atteso', zonaErrata: false, scaduto: false,
-      codiceAccesso: String(Math.floor(1000 + Math.random() * 9000)),
+      codiceAccesso: null, codiceQR: null, metodoPass: null, tipoPass: null,
       referenteId: referenteId || 'USR-0002',
       creatoIl: OGGI_ISO
     };
+    /* Il contenuto si decide DOPO aver scelto lo stallo, perche' dipende dalla
+       zona in cui e' finito: generare un PIN e poi scoprire che il varco legge
+       solo QR e' esattamente il difetto che questo blocco chiude. */
+    v.metodoPass = S.metodoPerVisitatore(v);
+    const tipoPass = S.passVisitatore(v).tipo;
+    v.tipoPass = tipoPass;
+    if (tipoPass === 'codice')  v.codiceAccesso = String(rInt(1000, 9999));
+    else if (tipoPass === 'qr') v.codiceQR = 'QR-' + v.passId.replace(/-/g, '') + '-' + data.replace(/-/g, '');
     AppState.visitatori.push(v);
     Store.emit('visitatori');
     return v;
@@ -3755,7 +3918,7 @@ const A = {
       dataFine: al < dal ? dal : al,
       stato: 'in_attesa',
       note: (note || '').trim(),
-      codiceAccesso: null,
+      codiceAccesso: null, codiceQR: null,
       esitoIlTs: null,
       /* `visto` governa il badge di notifica nell'hero: una richiesta appena
          inviata non e' una novita' da segnalare, quindi nasce gia' vista.
@@ -3781,7 +3944,7 @@ const A = {
     });
     Object.assign(r, {
       stato: 'approvata', note: note || '',
-      codiceAccesso: v.codiceAccesso, visitatoreId: v.id,
+      codiceAccesso: v.codiceAccesso, codiceQR: v.codiceQR, metodoPass: v.metodoPass, visitatoreId: v.id,
       /* Le date si riscrivono DAL PASS creato, non si danno per scontate:
          se creaPassVisitatore() normalizzasse l'intervallo, la richiesta
          mostrerebbe altrimenti giorni diversi da quelli davvero concessi. */
@@ -4343,7 +4506,7 @@ global.PC.Utils = {
   iniziali, nextId, rInt, toCSV,
   isLavorativo, giorniLavorativi
 };
-global.PC.Domini = { TIPO_STALLO, DISPONIBILITA, STATO_STALLO, METODO_ACCESSO, METODI_ZONA, TIPI_METODO_ACCESSO, LIVELLO_CHECKIN, TIPI_BARRIERA, TIPO_SEGNALAZIONE, DIPARTIMENTI, RUOLI, PERMISSIONS, STATO_ACCOUNT, TIPI_HW };
+global.PC.Domini = { TIPO_STALLO, DISPONIBILITA, STATO_STALLO, METODO_ACCESSO, METODI_ZONA, TIPI_METODO_ACCESSO, TIPI_PASS, LIVELLO_CHECKIN, TIPI_BARRIERA, TIPO_SEGNALAZIONE, DIPARTIMENTI, RUOLI, PERMISSIONS, STATO_ACCOUNT, TIPI_HW };
 
 })(window);
 
@@ -4962,6 +5125,56 @@ Modals.register('req-pass', {
 });
 
 /* ============================================================================
+   CONTENUTO DEL PASS VISITATORE
+   Uno solo, usato da add-vis, vis-det e req-pass: se ognuno si disegnasse il
+   proprio box, al primo cambio di tassonomia divergerebbero. Riceve il
+   visitatore reale, oppure un oggetto finto in anteprima (add-vis, dove lo
+   stallo non e' ancora stato assegnato).
+============================================================================ */
+function boxPass(v, opt) {
+  opt = opt || {};
+  const pv = S.passVisitatore(v);
+
+  if (pv.tipo === 'codice') {
+    return `<div class="code-box"><span style="font-size:22px">${pv.icona}</span>
+      <div><div class="code-box-lbl">Codice accesso${opt.generato ? ' (generato automaticamente)' : ''}</div>
+      <div class="code-val">${UI.esc(v.codiceAccesso || '\u2014')}</div>
+      <div class="code-box-lbl" style="font-size:10px;margin-top:2px">${UI.esc(pv.istruzioni)} \u00b7 ${UI.esc(pv.metodoLabel)}</div></div>
+      ${opt.rigenera ? UI.btn('\u21bb Rigenera', { azione: 'rigenera-codice', stile: 'margin-left:auto' }) : ''}
+    </div>`;
+  }
+
+  if (pv.tipo === 'qr') {
+    return `<div class="code-box"><span style="font-size:22px">${pv.icona}</span>
+      <div><div class="code-box-lbl">QR accesso${opt.generato ? ' (generato automaticamente)' : ''}</div>
+      <div class="code-val code-qr">${UI.esc(v.codiceQR || '\u2014')}</div>
+      <div class="code-box-lbl" style="font-size:10px;margin-top:2px">Il visitatore mostrer\u00e0 questo codice al lettore QR all'ingresso</div></div>
+    </div>`;
+  }
+
+  /* ricevuta: niente codice, perche' nessun codice funzionerebbe */
+  const st = v.stalloId ? S.stallo(v.stalloId) : null;
+  const unGiorno = !v.dataFine || v.dataFine === v.data;
+  const periodo = v.data
+    ? UI.esc(U.fmtMedium(U.fromISO(v.data))) + (unGiorno ? '' : ' \u2192 ' + UI.esc(U.fmtMedium(U.fromISO(v.dataFine))))
+    : '\u2014';
+  return `<div class="ricevuta-box">
+    <div class="ricevuta-hd">${pv.icona} Ricevuta di accesso
+      <span class="ricevuta-metodo">${UI.esc(pv.metodoLabel)}</span></div>
+    <div class="ricevuta-grid">
+      <div><span>Visitatore</span><strong>${UI.esc(v.nome || '\u2014')}</strong></div>
+      <div><span>Azienda</span><strong>${UI.esc(v.azienda || '\u2014')}</strong></div>
+      <div><span>Referente interno</span><strong>${UI.esc(v.referenteId ? S.nomePersona(v.referenteId) : '\u2014')}</strong></div>
+      <div><span>Data</span><strong>${periodo}</strong></div>
+      <div><span>Fascia oraria</span><strong>${UI.esc((v.oraInizio || '\u2014') + ' \u2013 ' + (v.oraFine || '\u2014'))}</strong></div>
+      <div><span>Stallo assegnato</span><strong>${UI.esc(v.stalloId || 'assegnato alla creazione')}${st ? ' \u00b7 ' + UI.esc(st.piano || '') : ''}</strong></div>
+    </div>
+    ${pv.nota ? `<div class="ricevuta-nota">\u2139\ufe0f ${UI.esc(pv.nota)}</div>` : ''}
+    <div class="ricevuta-istr">${UI.esc(pv.istruzioni)}</div>
+  </div>`;
+}
+
+/* ============================================================================
    VISITATORI
 ============================================================================ */
 Modals.register('add-vis', {
@@ -4972,7 +5185,16 @@ Modals.register('add-vis', {
     const fmDefault = S.facilityManager() || {};
     const referenti = State.utentiPiattaforma.map(u => ({ v: u.id, l: u.nomeCompleto + ' (' + S.etichettaRuolo(u.ruolo) + ')' }))
       .concat(State.dipendenti.filter(d => d.inEvidenza && d.stato === 'attivo').map(d => ({ v: d.id, l: d.nomeCompleto })));
-    return UI.alert('Il visitatore riceverà il <strong>codice di accesso</strong> via email. Il referente riceverà conferma.', 'info') + `
+    /* Il contenuto dipende dalla zona in cui finira' lo stallo: in anteprima
+       si usa il metodo di default (Zona V), lo stesso che usera' l'action. */
+    const anteprima = {
+      nome: f('nome', ''), azienda: f('azienda', ''), referenteId: f('referente', fmDefault.id),
+      data: f('data'), dataFine: null, oraInizio: f('da'), oraFine: f('a'),
+      stalloId: null, codiceAccesso: f('codice'),
+      codiceQR: 'QR-' + 'VIS' + String(State.visitatori.length + 41).padStart(4, '0') + '-' + String(f('data') || '').replace(/-/g, '')
+    };
+    const pv = S.passVisitatore(anteprima);
+    return UI.alert(`Zona visitatori con accesso <strong>${UI.esc(pv.metodoLabel)}</strong>: il pass sarà ${pv.tipo === 'codice' ? 'un <strong>codice numerico</strong>' : pv.tipo === 'qr' ? 'un <strong>QR Code</strong>' : 'una <strong>ricevuta</strong> senza codice'}. Il referente riceverà conferma.`, 'info') + `
       <div class="form-grid2">
         ${UI.campo('Nome visitatore', UI.input({ placeholder: 'Nome Cognome' }).replace('<input', '<input' + fld('nome')))}
         ${UI.campo('Email visitatore ✱', UI.input({ tipo: 'email', placeholder: 'email@azienda.com' }).replace('<input', '<input' + fld('email')))}
@@ -4983,14 +5205,12 @@ Modals.register('add-vis', {
         ${UI.campo('Referente interno', UI.select(referenti, f('referente', fmDefault.id)).replace('<select', '<select' + fld('referente')))}
         ${UI.campo('Email referente', UI.input({ tipo: 'email', valore: fmDefault.email || '' }).replace('<input', '<input' + fld('emailReferente')))}
       </div>
-      <div class="code-box"><span style="font-size:22px">🔑</span>
-        <div><div class="code-box-lbl">Codice di accesso (generato automaticamente)</div>
-        <div class="code-val">${UI.esc(f('codice'))}</div>
-        <div class="code-box-lbl" style="font-size:10px;margin-top:2px">Valido solo nella fascia oraria selezionata</div></div>
-        ${UI.btn('↻ Rigenera', { azione: 'rigenera-codice', stile: 'margin-left:auto' })}
-      </div>`;
+      ` + boxPass(anteprima, { generato: true, rigenera: true });
   },
-  footer: () => chiudi() + ok('Genera e Invia Codice', 'crea-visitatore')
+  footer: () => {
+    const t = S.tipoPassPerZona('V');
+    return chiudi() + ok(t === 'ricevuta' ? 'Crea e Invia Pass' : 'Genera e Invia Pass', 'crea-visitatore');
+  }
 });
 
 Modals.register('vis-det', {
@@ -5018,7 +5238,7 @@ Modals.register('vis-det', {
         UI.infoBox('Visitatore', UI.esc(v.nome)),
         UI.infoBox('Azienda', UI.esc(v.azienda)),
         UI.infoBox('Pass', UI.esc(v.passId), true),
-        UI.infoBox('Codice di accesso', UI.esc(v.codiceAccesso), true),
+        UI.infoBox('Contenuto pass', UI.esc(S.passVisitatore(v).tipoLabel)),
         UI.infoBox('Stallo', UI.esc(v.stalloId || '—')),
         UI.infoBox('Validità', `${UI.esc(v.oraInizio)} – ${UI.esc(v.oraFine)}`, true),
         UI.infoBox('Stato', UI.badge(lbl, col)),
@@ -5029,6 +5249,8 @@ Modals.register('vis-det', {
           { v: 'riassegna', l: 'Riassegna a stallo corretto in Zona V' },
           { v: 'revoca', l: 'Revoca il pass' }
         ], f('azione', 'notifica')).replace('<select', '<select' + fld('azione'))) : ''}
+      <div class="modal-sec-tit">Contenuto del pass</div>
+      ${boxPass(v, {})}
       <div class="modal-sec-tit">Periodo di validit\u00e0</div>
       ${UI.alert('Il periodo si sposta in <strong>entrambe le direzioni</strong>: si pu\u00f2 anticipare l\'inizio per un visitatore in arrivo prima del previsto, non solo posticipare la fine.', 'info')}
       <div class="form-grid2">
@@ -5254,21 +5476,38 @@ Modals.register('add-stallo', {
    PRENOTAZIONI — Nuova prenotazione FM
 ============================================================================ */
 Modals.register('add-bk', {
-  initForm: () => ({ dipendente: '', data: U.OGGI_ISO, tipo: 'ufficio', stallo: '', oraInizio: '09:00', oraFine: '18:00' }),
+  initForm: () => ({
+    dipendente: '', data: U.OGGI_ISO, tipo: 'ufficio', stallo: '',
+    oraInizio: '09:00', oraFine: '18:00',
+    /* in giornaliera resta vuoto e non viene mai letto */
+    turnoId: State.config.modalitaPrenotazione === 'turni' ? ((State.config.turni || [])[0] || {}).id || '' : ''
+  }),
   titolo: () => '📅 Nuova Prenotazione (FM)',
   body: () => {
     const dips = State.dipendenti.filter(d => d.stato === 'attivo' && d.inEvidenza).map(d => ({ v: d.id, l: d.nomeCompleto }));
     const dipId = f('dipendente', dips[0] ? dips[0].v : '');
     const data = f('data', U.OGGI_ISO);
+    /* In modalita' turni la disponibilita' dipende dal TURNO: proporre stalli
+       calcolati sull'intera giornata mostrerebbe come occupati posti liberi
+       nel turno scelto. */
+    const perTurni = State.config.modalitaPrenotazione === 'turni';
+    const turni = State.config.turni || [];
+    const turnoSel = perTurni ? f('turnoId', (turni[0] || {}).id || '') : null;
     const liberi = [{ v: '', l: 'Auto-assegna (stallo più vicino)' }]
-      .concat(S.stalliDisponibiliPer(dipId, data).slice(0, 25).map(c => ({ v: c, l: c + ' (libero)' })));
+      .concat(S.stalliDisponibiliPer(dipId, data, perTurni ? turnoSel : undefined).slice(0, 25).map(c => ({ v: c, l: c + ' (libero)' })));
+    const giaPrenotati = dipId ? S.prenotazioniGiorno(dipId, data) : [];
     const esistente = dipId ? S.prenotazione(dipId, data) : null;
     return `
-      ${esistente ? UI.alert(`⚠ Esiste già una prenotazione per questo giorno (${esistente.tipo === 'sw' ? 'Smart Working' : 'Stallo ' + UI.esc(esistente.stalloId)}). Confermando verrà sostituita.`, 'warn') : ''}
+      ${perTurni && giaPrenotati.length
+          ? UI.alert(`Turni già prenotati per questo giorno: <strong>${giaPrenotati.map(p => UI.esc((S.turno(p.turnoId) || {}).label || '—') + ' (' + UI.esc(p.stalloId || '—') + ')').join(', ')}</strong>. Il nuovo turno si <strong>aggiunge</strong>, non sostituisce · max ${S.maxTurniPerDipendente()}.`, 'info')
+          : esistente ? UI.alert(`⚠ Esiste già una prenotazione per questo giorno (${esistente.tipo === 'sw' ? 'Smart Working' : 'Stallo ' + UI.esc(esistente.stalloId)}). Confermando verrà sostituita.`, 'warn') : ''}
       <div class="form-grid2">
         ${UI.campo('Dipendente', UI.select(dips, dipId, { azione: 'refresh-modale' }).replace('<select', '<select' + fld('dipendente')))}
         ${UI.campo('Data', UI.input({ tipo: 'date', valore: data, azione: 'refresh-modale' }).replace('<input', '<input' + fld('data')))}
         ${UI.campo('Tipo', UI.select([{ v: 'ufficio', l: 'In ufficio' }, { v: 'sw', l: 'Smart Working' }], f('tipo'), { azione: 'refresh-modale' }).replace('<select', '<select' + fld('tipo')))}
+        ${perTurni && f('tipo', 'ufficio') === 'ufficio'
+          ? UI.campo('Turno ✱', UI.select(turni.map(t => ({ v: t.id, l: t.label + ' ' + t.inizio + '–' + t.fine })), turnoSel, { azione: 'refresh-modale' }).replace('<select', '<select' + fld('turnoId')))
+          : ''}
         ${f('tipo', 'ufficio') === 'ufficio' ? UI.campo('Stallo', UI.select(liberi, f('stallo')).replace('<select', '<select' + fld('stallo'))) : ''}
       </div>
       ${f('tipo', 'ufficio') === 'ufficio' ? `<div class="form-grid2">
@@ -5283,6 +5522,59 @@ Modals.register('add-bk', {
 /* ============================================================================
    CONFIG — Policy
 ============================================================================ */
+/* ============================================================================
+   FM — dettaglio di una prenotazione esistente
+   Fino al CODE-20 una cella gia' prenotata riapriva "Nuova prenotazione": il
+   FM che confermava non modificava nulla, ricreava. `prenota()` annulla
+   l'esistente, quindi partivano ID nuovo, stallo riassegnato e check-in perso,
+   e gli orari mostrati erano sempre 09:00-18:00 invece di quelli veri.
+============================================================================ */
+Modals.register('bk-det', {
+  size: 'modal-lg',
+  initForm: (c) => {
+    const p = S.prenotazioneById(c.prenotazioneId);
+    return { oraInizio: (p && p.oraInizio) || '09:00', oraFine: (p && p.oraFine) || '18:00' };
+  },
+  titolo: (c) => {
+    const p = S.prenotazioneById(c.prenotazioneId);
+    if (!p) return '📅 Prenotazione';
+    const d = S.dipendente(p.dipendenteId);
+    return '📅 ' + UI.esc(d ? d.nomeCompleto : 'Prenotazione') + ' \u00b7 ' + UI.esc(U.fmtMedium(U.fromISO(p.data)));
+  },
+  body: (c) => {
+    const p = S.prenotazioneById(c.prenotazioneId);
+    if (!p) return UI.alert('Prenotazione non trovata.', 'danger');
+    const st = p.stalloId ? S.stallo(p.stalloId) : null;
+    const t = p.turnoId ? S.turno(p.turnoId) : null;
+    const dentro = p.checkInTs && !p.checkOutTs;
+
+    return (p.tipo === 'sw' ? UI.alert('🏠 Smart Working: nessuno stallo impegnato.', 'info') : '')
+      + (dentro ? UI.alert('\u2713 Check-in registrato alle <strong>' + UI.esc(p.checkIn) + '</strong> \u00b7 sosta in corso da '
+          + UI.esc(U.fmtMinuti((S.durataPrenotazioneAttiva(p.id) || 0) * 60000)) + '.', 'success') : '')
+      + (p.checkOutTs ? UI.alert('Sosta conclusa: ' + UI.esc(p.checkIn) + ' \u2013 ' + UI.esc(p.checkOut) + '.', 'info') : '')
+      + UI.infoGrid([
+        UI.infoBox('Stallo', p.tipo === 'ufficio' ? UI.esc(p.stalloId || '\u2014') : 'Smart Working', true),
+        UI.infoBox('Zona', st ? UI.esc((S.zona(st.zonaId) || {}).nome || st.zonaId) : '\u2014'),
+        UI.infoBox(t ? 'Turno' : 'Creata da', t ? UI.esc(t.label + ' ' + t.inizio + '\u2013' + t.fine) : UI.esc(p.creataDa === 'fm' ? 'Facility Manager' : 'Dipendente')),
+        UI.infoBox('Metodo di accesso', st ? UI.esc(S.metodoDef(S.metodoAccessoPerStallo(p.stalloId)).label) : '\u2014')
+      ])
+      + (p.tipo === 'ufficio' ? '<div class="modal-sec-tit">Fascia oraria</div>'
+        + UI.alert('Si può <strong>anticipare</strong> o <strong>posticipare</strong> senza toccare lo stallo: la prenotazione resta la stessa, cambia solo la fascia.', 'info')
+        + '<div class="form-grid2">'
+        + UI.campo('Ora inizio', UI.input({ tipo: 'time', valore: f('oraInizio', '09:00'), focusKey: 'bkd-oi' }).replace('<input', '<input' + fld('oraInizio')))
+        + UI.campo('Ora fine', UI.input({ tipo: 'time', valore: f('oraFine', '18:00'), focusKey: 'bkd-of' }).replace('<input', '<input' + fld('oraFine')))
+        + '</div>'
+        + UI.btn('Aggiorna orari', { azione: 'fm-aggiorna-orari', params: { prenotazioneId: p.id }, variante: 'btn-primary', sm: false })
+        : '');
+  },
+  footer: (c) => {
+    const p = S.prenotazioneById(c.prenotazioneId);
+    return chiudi('Chiudi')
+      + (p ? UI.btn('Sostituisci prenotazione', { azione: 'fm-sostituisci-pren', params: { dipendenteId: p.dipendenteId, giornoIso: p.data }, sm: false }) : '')
+      + (p ? UI.btn('Cancella prenotazione', { azione: 'fm-cancella-pren', params: { prenotazioneId: p.id }, variante: 'btn-danger', sm: false }) : '');
+  }
+});
+
 Modals.register('policy', {
   initForm: () => Object.assign({}, State.config.prenotazioni),
   titolo: () => '⚙ Modifica Policy Prenotazioni',
@@ -5294,6 +5586,7 @@ Modals.register('policy', {
       ${UI.campo('Notifica sosta prolungata a (ore)', UI.input({ tipo: 'number', valore: f('notificaDurataOre'), min: 1, max: 24 }).replace('<input', '<input' + fld('notificaDurataOre')))}
       ${UI.campo('Durata max sosta EV (ore)', UI.input({ tipo: 'number', valore: f('durataMaxEvOre'), min: 1, max: 24 }).replace('<input', '<input' + fld('durataMaxEvOre')))}
       ${UI.campo('Blocco dopo N violazioni', UI.input({ tipo: 'number', valore: f('sogliaViolazioni'), min: 1, max: 10 }).replace('<input', '<input' + fld('sogliaViolazioni')))}
+      ${UI.campo('Max turni per dipendente <span class="muted">(modalità turni)</span>', UI.input({ tipo: 'number', valore: f('maxTurniPerDipendente', 3), min: 1, max: 5 }).replace('<input', '<input' + fld('maxTurniPerDipendente')))}
     </div>
     ${UI.alert('La finestra di prenotazione si riflette immediatamente nella Vista Dipendente.', 'info')}`,
   footer: () => chiudi() + ok('Salva', 'salva-policy')
@@ -5370,16 +5663,21 @@ Modals.register('emp-book', {
        disponibilita' dipende dal turno. */
     if (State.config.modalitaPrenotazione === 'turni' && tipo === 'ufficio') {
       const turnoSel = f('turnoId', '');
+      /* Un turno gia' prenotato da QUESTA persona non e' "pieno": e' suo. Senza
+         dirlo, il doppio turno sembrerebbe disponibile e verrebbe respinto solo
+         alla conferma. */
+      const miei = S.turniPrenotati(dip.id, c.giornoISO);
       const cards = (State.config.turni || []).map(t => {
         const liberi = S.stalliDisponibiliPer(dip.id, c.giornoISO, t.id).length;
-        const pieno = liberi === 0;
+        const gia = miei.indexOf(t.id) >= 0;
+        const pieno = liberi === 0 && !gia;
         /* Anche un turno pieno resta SELEZIONABILE: e' l'unico modo di
            arrivare alla proposta di lista d'attesa. Prima di CODE-17C era
            inerte, e la coda risultava irraggiungibile. */
         return `<div class="turno-card${turnoSel === t.id ? ' active' : ''}${pieno ? ' pieno' : ''}"${UI.act('emp-sel-turno', { turnoId: t.id })}>
           <div class="turno-card-hd">
             <div class="turno-card-lbl">${UI.esc(t.label)}</div>
-            ${UI.badge(pieno ? 'Esaurito' : 'Disponibile', pieno ? 'red' : 'green')}
+            ${gia ? UI.badge('Già prenotato', 'blue') : UI.badge(pieno ? 'Esaurito' : 'Disponibile', pieno ? 'red' : 'green')}
           </div>
           <div class="turno-card-ora mono">${UI.esc(t.inizio)} – ${UI.esc(t.fine)}</div>
           <div class="turno-card-posti">${liberi} post${liberi === 1 ? 'o' : 'i'} disponibil${liberi === 1 ? 'e' : 'i'}</div>
@@ -6329,14 +6627,25 @@ function cella(c, dip) {
   if (p.tipo === 'sw') {
     return `<div class="bk-slot s-sw"${UI.act('cella-prenota', params)} title="Smart Working">SW</div>`;
   }
-  /* In modalita' a turni la cella dice ANCHE quale turno: senza, due
-     prenotazioni sullo stesso stallo nello stesso giorno sarebbero
-     indistinguibili, che e' esattamente cio' che la modalita' introduce. */
-  if (State.config.modalitaPrenotazione === 'turni' && p.turnoId) {
-    const t = S.turno(p.turnoId);
-    const cls = { mattino: 't-mattino', pomeriggio: 't-pomeriggio', notte: 't-notte' }[p.turnoId] || 't-altro';
-    return `<div class="bk-slot s-turno ${cls}"${UI.act('cella-prenota', params)} title="${UI.esc(p.stalloId + ' · ' + (t ? t.label + ' ' + t.inizio + '–' + t.fine : p.turnoId))}">
-      <span class="bk-stallo">${UI.esc(p.stalloId)}</span><span class="bk-turno">${UI.esc(t ? t.label : p.turnoId)}</span></div>`;
+  /* In modalita' a turni la cella dice ANCHE quale turno, e ne mostra PIU' DI
+     UNO se la persona copre un doppio turno. Una riga per dipendente resta la
+     regola: i turni si impilano dentro la cella, non generano righe nuove. */
+  if (State.config.modalitaPrenotazione === 'turni') {
+    const conTurno = (c.prenotazioni || [p]).filter(x => x.turnoId);
+    if (conTurno.length) {
+      const badge = (x) => {
+        const t = S.turno(x.turnoId);
+        const cls = { mattino: 't-mattino', pomeriggio: 't-pomeriggio', notte: 't-notte' }[x.turnoId] || 't-altro';
+        return `<div class="bk-slot s-turno ${cls}"${UI.act('cella-turno', { prenotazioneId: x.id })} title="${UI.esc(x.stalloId + ' · ' + (t ? t.label + ' ' + t.inizio + '–' + t.fine : x.turnoId))}">
+          <span class="bk-stallo">${UI.esc(x.stalloId)}</span><span class="bk-turno">${UI.esc(t ? t.label : x.turnoId)}</span></div>`;
+      };
+      /* il "+" resta raggiungibile: senza, il secondo turno non si potrebbe
+         aggiungere dalla griglia */
+      const puoAggiungere = conTurno.length < S.maxTurniPerDipendente();
+      return `<div class="bk-turni-stack">${conTurno.map(badge).join('')}${
+        puoAggiungere ? `<div class="bk-add-turno"${UI.act('cella-prenota', Object.assign({}, params, { nuovo: '1' }))} title="Aggiungi un turno">+</div>` : ''
+      }</div>`;
+    }
   }
   /* violazione: lo stallo prenotato risulta occupato abusivamente */
   const stato = S.statoStallo(p.stalloId, c.iso);
@@ -6345,7 +6654,10 @@ function cella(c, dip) {
        la cella da sola direbbe solo che lo stallo era riservato. */
     const dot = p.checkOutTs ? '<span class="bk-dot bk-dot-out">●</span>'
       : p.checkInTs ? '<span class="bk-dot bk-dot-in">●</span>' : '';
-  return `<div class="bk-slot ${viol ? 's-viol' : 's-book'}"${UI.act('cella-prenota', params)} title="${UI.esc(p.stalloId + (viol ? ' — occupazione abusiva in corso' : ''))}">${UI.esc(p.stalloId)}${dot}${viol ? ' ⚠' : ''}</div>`;
+  /* La fascia sta nel tooltip: senza, una modifica agli orari non produce
+     alcun effetto visibile e sembra non essere stata salvata. */
+  const fascia = p.oraInizio && p.oraFine ? ' · ' + p.oraInizio + '–' + p.oraFine : '';
+  return `<div class="bk-slot ${viol ? 's-viol' : 's-book'}"${UI.act('cella-prenota', params)} title="${UI.esc(p.stalloId + fascia + (viol ? ' — occupazione abusiva in corso' : ''))}">${UI.esc(p.stalloId)}${dot}${viol ? ' ⚠' : ''}</div>`;
 }
 
 /* ---- handler ---------------------------------------------------------- */
@@ -6359,18 +6671,70 @@ UI.on('azzera-filtro-pren', () => A.resetFiltri('dipendenti'));
 UI.on('pagina-pren', d => A.setPaginaPrenotazioni(parseInt(d.pagina, 10)));
 
 UI.on('cella-prenota', d => {
+  /* Su una cella gia' prenotata si apre il DETTAGLIO. Riaprire "Nuova
+     prenotazione" significava passare da prenota(), che annulla l'esistente:
+     bastava un click esplorativo per riassegnare lo stallo e perdere il
+     check-in. La creazione resta per le celle libere. */
+  /* Il "+" della pila turni chiede esplicitamente una prenotazione NUOVA. */
+  if (d.nuovo) { apriNuovaPrenotazione(d.dipendenteId, d.giornoIso); return; }
+  const p = S.prenotazione(d.dipendenteId, d.giornoIso);
+  if (p) { Modals.open('bk-det', { prenotazioneId: p.id }); return; }
+  apriNuovaPrenotazione(d.dipendenteId, d.giornoIso);
+});
+
+/* Un badge nella pila punta a UNA prenotazione precisa: con piu' turni nello
+   stesso giorno, risalire dal solo (dipendente, data) sarebbe ambiguo. */
+UI.on('cella-turno', d => Modals.open('bk-det', { prenotazioneId: d.prenotazioneId }));
+
+function apriNuovaPrenotazione(dipendenteId, giornoIso) {
   Modals.open('add-bk', {});
-  Modals.form = { dipendente: d.dipendenteId, data: d.giornoIso, tipo: 'ufficio', stallo: '' };
+  Modals.form = {
+    dipendente: dipendenteId, data: giornoIso, tipo: 'ufficio', stallo: '',
+    oraInizio: '09:00', oraFine: '18:00'
+  };
   Modals._render();
+}
+
+UI.on('fm-aggiorna-orari', d => {
+  Modals._collect();
+  const r = A.modificaOrariPrenotazione({
+    prenotazioneId: d.prenotazioneId,
+    oraInizio: Modals.form.oraInizio, oraFine: Modals.form.oraFine
+  });
+  if (r && r.errore) { UI.toast('⚠ ' + r.errore); return; }
+  Modals.close();
+  const dip = S.dipendente(r.dipendenteId);
+  UI.toast(`🕓 ${dip ? dip.nome : 'Prenotazione'}: fascia aggiornata · ${r.oraInizio}–${r.oraFine}`);
+});
+
+UI.on('fm-cancella-pren', d => {
+  const p = S.prenotazioneById(d.prenotazioneId);
+  if (!p) return;
+  const dip = S.dipendente(p.dipendenteId);
+  A.annullaPrenotazione(p.id);
+  Modals.close();
+  UI.toast(`Prenotazione di ${dip ? dip.nome : '—'} del ${U.fmtDM(U.fromISO(p.data))} cancellata`);
+});
+
+/* Sostituire e' un'operazione DIVERSA dal modificare: qui si accetta
+   consapevolmente di ricreare la prenotazione (stallo riassegnato, check-in
+   azzerato). Prima era l'unico comportamento possibile, e non era dichiarato. */
+UI.on('fm-sostituisci-pren', d => {
+  Modals.close();
+  apriNuovaPrenotazione(d.dipendenteId, d.giornoIso);
 });
 
 UI.on('crea-prenotazione-fm', () => {
   Modals._collect();
   const fm = Modals.form;
   if (!fm.dipendente) { UI.toast('Seleziona un dipendente'); return; }
+  const perTurni = State.config.modalitaPrenotazione === 'turni';
+  const tipo = fm.tipo || 'ufficio';
+  if (perTurni && tipo === 'ufficio' && !fm.turnoId) { UI.toast('Seleziona il turno'); return; }
   const r = A.prenota({
     dipendenteId: fm.dipendente, dataISO: fm.data,
-    tipo: fm.tipo || 'ufficio', stalloId: fm.stallo || null, creataDa: 'fm'
+    tipo, stalloId: fm.stallo || null, creataDa: 'fm',
+    turnoId: perTurni && tipo === 'ufficio' ? fm.turnoId : null
   });
   if (r.errore) { UI.toast('⚠ ' + r.errore); return; }
   /* La fascia si applica DOPO: `prenota` scrive gli orari standard, e qui si
@@ -6384,9 +6748,10 @@ UI.on('crea-prenotazione-fm', () => {
   }
   Modals.close();
   const dip = S.dipendente(fm.dipendente);
+  const t = r.turnoId ? S.turno(r.turnoId) : null;
   UI.toast(r.tipo === 'sw'
     ? `✓ Smart Working registrato per ${dip.nome} il ${U.fmtDM(U.fromISO(fm.data))}`
-    : `✓ ${dip.nome}: stallo ${r.stalloId} prenotato per il ${U.fmtDM(U.fromISO(fm.data))}`);
+    : `✓ ${dip.nome}: stallo ${r.stalloId}${t ? ' · ' + t.label : ''} prenotato per il ${U.fmtDM(U.fromISO(fm.data))}`);
 });
 
 })(window);
@@ -6820,10 +7185,15 @@ UI.on('crea-visitatore', () => {
     nome: (fm.nome || 'Visitatore').trim(), azienda: fm.azienda, email: fm.email.trim(),
     dataISO: fm.data, oraInizio: fm.da, oraFine: fm.a, referenteId: fm.referente
   });
-  if (fm.codice) v.codiceAccesso = fm.codice;
+  /* Il codice digitato a mano vale solo se il pass e' davvero "a codice":
+     scriverlo su una ricevuta creerebbe un numero che nessun varco legge. */
+  const pv = S.passVisitatore(v);
+  if (pv.tipo === 'codice' && fm.codice) v.codiceAccesso = fm.codice;
   Modals.close();
   A.vaiA('visitatori');
-  UI.toast(`✓ Pass ${v.passId} creato · codice ${v.codiceAccesso} inviato a ${v.email}`);
+  UI.toast(pv.tipo === 'codice' ? `✓ Pass ${v.passId} creato · codice ${v.codiceAccesso} inviato a ${v.email}`
+    : pv.tipo === 'qr' ? `✓ Pass ${v.passId} creato · QR ${v.codiceQR} inviato a ${v.email}`
+    : `✓ Pass ${v.passId} creato · ricevuta inviata a ${v.email} · ${pv.metodoLabel}`);
 });
 
 UI.on('vis-arrivato', d => {
@@ -7455,7 +7825,8 @@ UI.on('salva-policy', () => {
     durataMaxDipendenteOre: parseInt(fm.durataMaxDipendenteOre, 10) || 10,
     notificaDurataOre: parseInt(fm.notificaDurataOre, 10) || 8,
     durataMaxEvOre: parseInt(fm.durataMaxEvOre, 10) || 4,
-    sogliaViolazioni: parseInt(fm.sogliaViolazioni, 10) || 3
+    sogliaViolazioni: parseInt(fm.sogliaViolazioni, 10) || 3,
+    maxTurniPerDipendente: Math.min(5, Math.max(1, parseInt(fm.maxTurniPerDipendente, 10) || 3))
   });
   Modals.close();
   UI.toast('✓ Policy salvata e applicata a tutti i dipendenti');
@@ -7496,7 +7867,10 @@ UI.on('approva-req', d => {
   Modals._collect();
   const v = A.approvaRichiestaPass(d.richiestaId, Modals.form.note);
   Modals.close();
-  UI.toast(`✓ Approvato · codice ${v.codiceAccesso} inviato a ${v.email}`);
+  const pv = S.passVisitatore(v);
+  UI.toast(pv.tipo === 'codice' ? `✓ Approvato · codice ${v.codiceAccesso} inviato a ${v.email}`
+    : pv.tipo === 'qr' ? `✓ Approvato · QR ${v.codiceQR} inviato a ${v.email}`
+    : `✓ Approvato · ricevuta inviata a ${v.email} · ${pv.metodoLabel}`);
 });
 UI.on('rifiuta-req', d => {
   /* _collect() PRIMA di leggere il form: senza, la motivazione scritta dal FM
@@ -8223,13 +8597,7 @@ function sezioneRichieste(dip) {
                 ${UI.badge(lbl, col)}
               </div>
               <div class="emp-req-date">📅 ${UI.esc(U.fmtMedium(U.fromISO(r.dataInizio)))}${unGiorno ? '' : ' → ' + UI.esc(U.fmtMedium(U.fromISO(r.dataFine)))}</div>
-              ${r.stato === 'approvata' && r.codiceAccesso
-                ? `<div class="emp-code-box">
-                     <span class="emp-code-lbl">Codice accesso</span>
-                     <span class="emp-code-val">${UI.esc(r.codiceAccesso)}</span>
-                     <span class="emp-code-note">Valido dal ${UI.esc(U.fmtDM(U.fromISO(r.dataInizio)))} al ${UI.esc(U.fmtDM(U.fromISO(r.dataFine)))} · H24</span>
-                   </div>`
-                : ''}
+              ${r.stato === 'approvata' ? contenutoPassRichiesta(r) : ''}
               ${r.stato === 'rifiutata' && r.note
                 ? `<div class="emp-req-nota">Motivo: ${UI.esc(r.note)}</div>` : ''}
             </div>`;
@@ -8256,6 +8624,42 @@ function sezioneRichieste(dip) {
     <div class="emp-section-title" style="margin-bottom:14px">Le mie richieste</div>
     ${tabs}
     <div class="emp-req-body">${corpo}</div>
+  </div>`;
+}
+
+/** Che cosa mostrare per un pass approvato: dipende dal metodo della zona in
+    cui il visitatore ha ricevuto lo stallo, non da come e' stata scritta la
+    richiesta. Un codice numerico davanti a un lettore QR non serve a nulla. */
+function contenutoPassRichiesta(r) {
+  const v = r.visitatoreId ? S.visitatore(r.visitatoreId) : null;
+  /* Si legge dal visitatore creato; se manca (richiesta ancora senza pass) si
+     ricade sul metodo congelato nella richiesta stessa. Mai ri-derivare dalla
+     zona: cambierebbe sotto gli occhi del dipendente. */
+  const pv = S.passVisitatore(v || { metodoPass: r.metodoPass, stalloId: null });
+  const validita = `Valido dal ${UI.esc(U.fmtDM(U.fromISO(r.dataInizio)))} al ${UI.esc(U.fmtDM(U.fromISO(r.dataFine)))} \u00b7 H24`;
+
+  if (pv.tipo === 'codice' && r.codiceAccesso) {
+    return `<div class="emp-code-box">
+      <span class="emp-code-lbl">Codice accesso</span>
+      <span class="emp-code-val">${UI.esc(r.codiceAccesso)}</span>
+      <span class="emp-code-note">${validita}</span>
+    </div>`;
+  }
+  if (pv.tipo === 'qr' && r.codiceQR) {
+    return `<div class="emp-code-box">
+      <span class="emp-code-lbl">QR accesso</span>
+      <span class="emp-code-val emp-code-qr">${UI.esc(r.codiceQR)}</span>
+      <span class="emp-code-note">${validita} \u00b7 da mostrare al lettore QR</span>
+    </div>`;
+  }
+  return `<div class="emp-ricevuta">
+    <div class="emp-ricevuta-hd">${pv.icona} Ricevuta di accesso \u00b7 nessun codice</div>
+    <div class="emp-ricevuta-riga"><span>Visitatore</span><strong>${UI.esc(r.visitatoreNome)}</strong></div>
+    <div class="emp-ricevuta-riga"><span>Azienda</span><strong>${UI.esc(r.azienda || '\u2014')}</strong></div>
+    <div class="emp-ricevuta-riga"><span>Stallo</span><strong>${UI.esc((v && v.stalloId) || '\u2014')}</strong></div>
+    <div class="emp-ricevuta-riga"><span>Validit\u00e0</span><strong>${validita}</strong></div>
+    ${pv.nota ? `<div class="emp-ricevuta-nota">\u2139\ufe0f ${UI.esc(pv.nota)}</div>` : ''}
+    <div class="emp-ricevuta-istr">${UI.esc(pv.istruzioni)}</div>
   </div>`;
 }
 
@@ -8286,12 +8690,19 @@ function cardGiorno(g, dip) {
   const isOggi = iso === U.OGGI_ISO;
   const pre = S.prenotazione(dip.id, iso);
 
+  /* In modalita' turni un giorno puo' contenere piu' prenotazioni (doppio
+     turno): la card le elenca tutte, altrimenti il secondo turno risulterebbe
+     invisibile a chi l'ha prenotato. */
+  const delGiorno = S.prenotazioniGiorno(dip.id, iso).filter(p => p.tipo === 'ufficio');
   let cls = 'emp-day', stato = '', statoCls = '', spot = '';
   if (passato)                    { cls += ' day-past'; stato = 'Passato'; statoCls = 'past'; }
   else if (pre && pre.tipo === 'ufficio') {
-    cls += ' day-booked'; stato = '✓ Prenotato'; statoCls = 'ok';
-    const t = pre.turnoId ? S.turno(pre.turnoId) : null;
-    spot = pre.stalloId + (t ? ' · ' + t.label : '');
+    cls += ' day-booked'; statoCls = 'ok';
+    stato = delGiorno.length > 1 ? '✓ ' + delGiorno.length + ' turni' : '✓ Prenotato';
+    spot = delGiorno.map(p => {
+      const t = p.turnoId ? S.turno(p.turnoId) : null;
+      return p.stalloId + (t ? ' · ' + t.label : '');
+    }).join('\n');
   }
   else if (pre && pre.tipo === 'sw')      { cls += ' day-sw'; stato = '🏠 Smart W.'; statoCls = 'sw'; }
   else if (fuoriFinestra)         { cls += ' day-past'; stato = 'Non prenotabile'; statoCls = 'past'; }
@@ -8306,7 +8717,12 @@ function cardGiorno(g, dip) {
   const cliccabile = !passato && !fuoriFinestra;
   /* Su un giorno gia' prenotato si apre il DETTAGLIO, non di nuovo la
      prenotazione: da li' si fa check-in, si spostano gli orari, si cancella. */
-  const azione = pre && pre.tipo === 'ufficio'
+  /* In modalita' TURNI il click porta sempre alla schermata del giorno: e' li'
+     che si sceglie fra i turni e si aggiunge il secondo. Puntare al dettaglio
+     della singola prenotazione — corretto in giornaliera, dove ce n'e' una
+     sola — renderebbe irraggiungibile il doppio turno. */
+  const perTurni = State.config.modalitaPrenotazione === 'turni';
+  const azione = !perTurni && pre && pre.tipo === 'ufficio' && delGiorno.length === 1
     ? UI.act('emp-apri-prenot', { prenotazioneId: pre.id })
     : UI.act('emp-apri-giorno', { giornoIso: iso });
   return `<div class="${cls}"${cliccabile ? azione : ''}>
@@ -8314,7 +8730,7 @@ function cardGiorno(g, dip) {
     <div class="day-dow">${U.DAYS_IT[g.getDay()]}</div>
     <div class="day-num">${g.getDate()}</div>
     <div class="day-status ${statoCls}">${stato}</div>
-    ${spot ? `<div class="day-spot">${UI.esc(spot)}</div>` : ''}
+    ${spot ? spot.split('\n').map(s => `<div class="day-spot">${UI.esc(s)}</div>`).join('') : ''}
     ${dentro ? `<div class="day-timer">\u23f1 ${U.fmtMinuti((S.durataPrenotazioneAttiva(pre.id) || 0) * 60000)}</div>` : ''}
   </div>`;
 }
@@ -8343,15 +8759,22 @@ function bloccoCheckIn(p, opt) {
     </div>`;
   }
 
-  /* --- dentro: timer + check-out, identici a ogni livello --- */
+  /* --- dentro: timer sempre uguale, USCITA no. Dove il varco legge la targa
+         anche in uscita, un pulsante "Check-out" grande sarebbe una bugia: la
+         sosta si chiude da sola. Resta comunque un fallback, perche' la
+         telecamera puo' non leggere. --- */
   if (p.checkInTs) {
+    const auto = S.checkOutAutomatico(p.stalloId);
     return `<div class="chk-box chk-in">
       <div class="chk-row">
         ${UI.badge('\u2713 Dentro \u00b7 dalle ' + UI.esc(p.checkIn), 'green', true)}
         <span class="mbc-timer">\u23f1 ${U.fmtMinuti((S.durataPrenotazioneAttiva(p.id) || 0) * 60000)}</span>
       </div>
       <div class="chk-hint">Accesso registrato via ${UI.esc(S.metodoDef(p.metodoCheckIn || metodo).label)}</div>
-      ${UI.btn('\u23f9 Check-out', { azione: 'emp-checkout', params: { prenotazioneId: p.id }, variante: 'btn-danger' })}
+      ${auto
+        ? `<div class="chk-text">Check-out automatico via riconoscimento targa all'uscita.</div>`
+          + UI.btn('\u23f9 Check-out manuale (fallback)', { azione: 'emp-checkout', params: { prenotazioneId: p.id } })
+        : UI.btn('\u23f9 Check-out', { azione: 'emp-checkout', params: { prenotazioneId: p.id }, variante: 'btn-danger', sm: false })}
     </div>`;
   }
 

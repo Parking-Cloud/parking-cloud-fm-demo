@@ -869,3 +869,35 @@ input[type=range]{accent-color:var(--blue)}
 .my-booking-card.mbc-oggi{border-width:3px;border-color:var(--blue)}
 .modal-sec-tit{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;
   color:var(--text-muted);margin:16px 0 8px;padding-top:12px;border-top:1px solid var(--border)}
+
+/* ---- Contenuto del pass visitatore (CODE-21 A) ---- */
+.code-val.code-qr{font-size:15px;letter-spacing:1px}
+.ricevuta-box{border:1px solid var(--border);border-left:3px solid var(--blue);
+  border-radius:var(--r);padding:14px 16px;margin-top:12px;background:var(--bg-card)}
+.ricevuta-hd{display:flex;align-items:center;gap:8px;font-weight:800;font-size:13px;margin-bottom:10px}
+.ricevuta-metodo{margin-left:auto;font-size:10.5px;font-weight:700;color:var(--blue);
+  background:var(--blue-light);border-radius:20px;padding:2px 9px}
+.ricevuta-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px 16px}
+.ricevuta-grid span{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted)}
+.ricevuta-grid strong{font-size:12.5px}
+.ricevuta-nota{margin-top:11px;padding:8px 11px;border-radius:8px;
+  background:var(--blue-light);color:var(--blue);font-size:11.5px;font-weight:700}
+.ricevuta-istr{margin-top:9px;font-size:11px;color:var(--text-muted)}
+
+.emp-code-val.emp-code-qr{font-size:14px;letter-spacing:.5px}
+.emp-ricevuta{margin-top:10px;border:1px solid var(--border);border-left:3px solid var(--blue);
+  border-radius:10px;padding:12px 14px}
+.emp-ricevuta-hd{font-weight:800;font-size:12.5px;margin-bottom:8px}
+.emp-ricevuta-riga{display:flex;justify-content:space-between;gap:12px;font-size:12px;padding:3px 0}
+.emp-ricevuta-riga span{color:var(--text-muted);font-size:11px}
+.emp-ricevuta-nota{margin-top:9px;padding:7px 10px;border-radius:8px;
+  background:var(--blue-light);color:var(--blue);font-size:11.5px;font-weight:700}
+.emp-ricevuta-istr{margin-top:8px;font-size:11px;color:var(--text-muted)}
+
+/* ---- Turni multipli nella stessa cella (CODE-21 E) ---- */
+.bk-turni-stack{display:flex;flex-direction:column;gap:3px}
+.bk-turni-stack .bk-slot{margin:0}
+.bk-add-turno{border:1px dashed var(--border);border-radius:6px;text-align:center;
+  font-size:12px;font-weight:800;color:var(--text-muted);cursor:pointer;padding:1px 0;line-height:1.5}
+.bk-add-turno:hover{border-color:var(--blue);color:var(--blue);background:var(--blue-light)}
+.emp-day .day-spot + .day-spot{margin-top:2px}

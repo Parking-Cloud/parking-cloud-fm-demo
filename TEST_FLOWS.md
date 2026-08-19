@@ -41,6 +41,10 @@ stato incoerente. È l'origine di CODE-03.
 | `TIPI_METODO_ACCESSO` | `METODI_ZONA` (select in Config), `modalitaAccessoPerZona`, `tipoCheckInPerStallo`, `bloccoCheckIn()`, colonna Metodo in Accessi e Dipendenti — F31, F32 |
 | `zone[].metodoAccesso` | `metodoAccessoPerStallo`, `metodoAccessoPerDipendente`, `origineMetodoAccesso`, CARD 2 in Hardware, la UI di check-in del dipendente — F26, F31, F32 |
 | `prenotazioni.oraInizio/oraFine` | `modificaOrariPrenotazione`, `emp-prenot-det`, `add-bk`, seed uffici e ospedale (turni) — F33 |
+| `TIPI_METODO_ACCESSO.tipoPass` | `passVisitatore`, `boxPass()`, `add-vis`, `vis-det`, tab pass dipendente, colonne export — F35 |
+| `visitatori.metodoPass` / `tipoPass` | **congelati** alla creazione: non ri-derivare mai dalla zona — F35 |
+| `prenota()` | `emp-conferma`, `crea-prenotazione-fm`, `prenotaTurno`, `assegnaStalloDaListaAttesa`, F38. **Il ramo turni non sostituisce l'esistente** |
+| `righeSettimanaFM().celle` | ogni cella porta `prenotazione` (giornaliera) **e** `prenotazioni` (turni) — F38 |
 | `config.sede` | topbar, sidebar, export, card in Config, modale sede in Amministrazione — F34 |
 | `config.periodo` | `kpiAccessi`, `kpiVisitatori`, `kpiPrenotazioni`, `kpiSegnalazioni`, `accessiFiltrati`, `badges` (deve restare su OGGI), F14 |
 
@@ -529,6 +533,93 @@ stato incoerente. È l'origine di CODE-03.
   - La stessa action e' usata da Amministrazione con `postiTotali`, che passa
     per `impostaPostiTotali()` e puo' far scattare la conferma di riduzione.
 - **Verifica:** salva → topbar, sidebar ed export cambiano insieme
+
+## F35 — Contenuto del pass visitatore (CODE-21)
+
+- **Sorgente:** `state.js -> TIPI_METODO_ACCESSO.tipoPass`, `TIPI_PASS`,
+  `creaPassVisitatore()`; `modals.js -> boxPass()`, `add-vis`, `vis-det`;
+  `employee/index.js -> contenutoPassRichiesta()`
+- **Selectors:** `tipoPassPerZona`, `metodoPassDefault`, `metodoPerVisitatore`,
+  `passVisitatore`
+- **Da sapere:**
+  - Il tipo e' **congelato** su `v.metodoPass` / `v.tipoPass` alla creazione, e
+    `passVisitatore()` lo preferisce a qualunque derivazione. Un pass gia'
+    inviato e' un fatto del passato: se lo si ri-derivasse dalla zona, cambiare
+    varco trasformerebbe un codice consegnato in una ricevuta a schermo.
+    La derivazione resta solo per i record del seed, privi del campo.
+  - Il tipo dipende dalla zona dello **stallo assegnato**, che per i pass e'
+    sempre la **Zona V**: per provare i vari tipi si cambia il metodo di quella
+    zona, non delle altre.
+  - Un pass senza stallo non fallisce: `metodoPassDefault()` usa Zona V, o il
+    metodo piu' diffuso se la zona non esiste piu'.
+  - `boxPass()` e' UNO: se add-vis e vis-det si disegnassero il proprio box,
+    divergerebbero al primo cambio di tassonomia.
+  - Il codice digitato a mano in `add-vis` vale **solo** se il pass e' di tipo
+    `codice`.
+- **Verifica:** Zona V su pin/qr/guardiano/bluetooth/targa -> codice, QR,
+  ricevuta, ricevuta+nota, ricevuta+nota; stesso esito in add-vis, vis-det e
+  tab dipendente
+
+## F36 — Check-out automatico (CODE-21)
+
+- **Sorgente:** `TIPI_METODO_ACCESSO.checkOutAuto`, `S.checkOutAutomatico()`,
+  `employee/index.js -> bloccoCheckIn()`
+- **Da sapere:**
+  - Oggi vale **solo per `targa`**. Il fallback manuale resta comunque, perche'
+    la telecamera puo' non leggere: toglierlo lascerebbe la sosta aperta fino
+    alla chiusura automatica di mezzanotte.
+  - La differenza vive solo nel ramo "gia' dentro" di `bloccoCheckIn`: il resto
+    del blocco e' identico a ogni metodo.
+- **Verifica:** zona targa -> testo + pulsante piccolo; zona pin/bluetooth ->
+  "⏹ Check-out" grande; in entrambi i casi l'uscita si registra
+
+## F37 — Modifica di una prenotazione esistente lato FM (CODE-21)
+
+- **Sorgente:** `modals.js -> bk-det`, `fm/prenotazioni.js -> cella-prenota`,
+  `fm-aggiorna-orari`, `fm-cancella-pren`, `fm-sostituisci-pren`
+- **Da sapere:**
+  - **Cella prenotata -> `bk-det`. Cella libera -> `add-bk`.** Far passare una
+    modifica da `add-bk` significa passare da `prenota()`, che annulla
+    l'esistente: ID nuovo, stallo riassegnato, check-in perso. E' il difetto
+    corretto qui, ed e' silenzioso.
+  - "Sostituisci prenotazione" fa ancora esattamente quello — ma e' una scelta
+    dichiarata, non l'unico comportamento.
+  - Gli orari nel form si pre-caricano dai valori reali: mostrare sempre
+    09:00-18:00 faceva sembrare che il salvataggio precedente non avesse
+    funzionato.
+  - La fascia sta nel **tooltip della cella**: senza un effetto visibile, una
+    modifica corretta e' indistinguibile da una fallita.
+- **Verifica:** modifica orari -> stesso id, stesso stallo, check-in intatto,
+  modal chiuso, tooltip aggiornato; fine <= inizio rifiutata
+
+## F38 — Piu' turni nello stesso giorno (CODE-21)
+
+- **Sorgente:** `state.js -> prenota()`, `prenotazioniGiorno`, `turniPrenotati`,
+  `turniSiSovrappongono`, `maxTurniPerDipendente`; `fm/prenotazioni.js -> cella()`,
+  `cella-turno`; `employee/index.js -> cardGiorno()`; `modals.js -> add-bk`,
+  `emp-book`, `policy`
+- **Da sapere:**
+  - `prenota()` sostituisce l'esistente **solo se NON si sta prenotando un
+    turno**. Rimuovere quella condizione fa sparire il primo turno alla
+    prenotazione del secondo, senza errori.
+  - `S.prenotazione(dip, data)` continua a ritornare **una sola** prenotazione:
+    non e' stata cambiata, per non toccare la modalita' giornaliera. Chi ha
+    bisogno dell'elenco usa `prenotazioniGiorno()`.
+  - Tre controlli, in quest'ordine: duplicato, sovrapposizione, tetto. Con
+    mattino+pomeriggio+notte che coprono le 24h, un quarto turno viene sempre
+    fermato dalla **sovrapposizione** prima che dal tetto: per provare il tetto
+    serve abbassarlo.
+  - `turniSiSovrappongono` srotola il turno che scavalca la mezzanotte in due
+    intervalli, come `turnoCorrente()`.
+  - **Una riga per dipendente**, sempre: i turni si impilano nella cella. Il
+    badge punta a `prenotazioneId`, non a (dipendente, data), che con piu'
+    turni sarebbe ambiguo.
+  - In modalita' turni il click su un giorno del dipendente apre **sempre** la
+    schermata del giorno, anche con una sola prenotazione: puntare al dettaglio
+    renderebbe irraggiungibile il secondo turno.
+- **Verifica:** 2° e 3° turno si aggiungono; stesso turno bloccato;
+  sovrapposizione bloccata; tetto rispettato; una riga, badge impilati, "+"
+  fino al tetto
 
 ## F12 — Login Admin → accesso Amministrazione
 

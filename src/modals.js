@@ -303,6 +303,56 @@ Modals.register('req-pass', {
 });
 
 /* ============================================================================
+   CONTENUTO DEL PASS VISITATORE
+   Uno solo, usato da add-vis, vis-det e req-pass: se ognuno si disegnasse il
+   proprio box, al primo cambio di tassonomia divergerebbero. Riceve il
+   visitatore reale, oppure un oggetto finto in anteprima (add-vis, dove lo
+   stallo non e' ancora stato assegnato).
+============================================================================ */
+function boxPass(v, opt) {
+  opt = opt || {};
+  const pv = S.passVisitatore(v);
+
+  if (pv.tipo === 'codice') {
+    return `<div class="code-box"><span style="font-size:22px">${pv.icona}</span>
+      <div><div class="code-box-lbl">Codice accesso${opt.generato ? ' (generato automaticamente)' : ''}</div>
+      <div class="code-val">${UI.esc(v.codiceAccesso || '\u2014')}</div>
+      <div class="code-box-lbl" style="font-size:10px;margin-top:2px">${UI.esc(pv.istruzioni)} \u00b7 ${UI.esc(pv.metodoLabel)}</div></div>
+      ${opt.rigenera ? UI.btn('\u21bb Rigenera', { azione: 'rigenera-codice', stile: 'margin-left:auto' }) : ''}
+    </div>`;
+  }
+
+  if (pv.tipo === 'qr') {
+    return `<div class="code-box"><span style="font-size:22px">${pv.icona}</span>
+      <div><div class="code-box-lbl">QR accesso${opt.generato ? ' (generato automaticamente)' : ''}</div>
+      <div class="code-val code-qr">${UI.esc(v.codiceQR || '\u2014')}</div>
+      <div class="code-box-lbl" style="font-size:10px;margin-top:2px">Il visitatore mostrer\u00e0 questo codice al lettore QR all'ingresso</div></div>
+    </div>`;
+  }
+
+  /* ricevuta: niente codice, perche' nessun codice funzionerebbe */
+  const st = v.stalloId ? S.stallo(v.stalloId) : null;
+  const unGiorno = !v.dataFine || v.dataFine === v.data;
+  const periodo = v.data
+    ? UI.esc(U.fmtMedium(U.fromISO(v.data))) + (unGiorno ? '' : ' \u2192 ' + UI.esc(U.fmtMedium(U.fromISO(v.dataFine))))
+    : '\u2014';
+  return `<div class="ricevuta-box">
+    <div class="ricevuta-hd">${pv.icona} Ricevuta di accesso
+      <span class="ricevuta-metodo">${UI.esc(pv.metodoLabel)}</span></div>
+    <div class="ricevuta-grid">
+      <div><span>Visitatore</span><strong>${UI.esc(v.nome || '\u2014')}</strong></div>
+      <div><span>Azienda</span><strong>${UI.esc(v.azienda || '\u2014')}</strong></div>
+      <div><span>Referente interno</span><strong>${UI.esc(v.referenteId ? S.nomePersona(v.referenteId) : '\u2014')}</strong></div>
+      <div><span>Data</span><strong>${periodo}</strong></div>
+      <div><span>Fascia oraria</span><strong>${UI.esc((v.oraInizio || '\u2014') + ' \u2013 ' + (v.oraFine || '\u2014'))}</strong></div>
+      <div><span>Stallo assegnato</span><strong>${UI.esc(v.stalloId || 'assegnato alla creazione')}${st ? ' \u00b7 ' + UI.esc(st.piano || '') : ''}</strong></div>
+    </div>
+    ${pv.nota ? `<div class="ricevuta-nota">\u2139\ufe0f ${UI.esc(pv.nota)}</div>` : ''}
+    <div class="ricevuta-istr">${UI.esc(pv.istruzioni)}</div>
+  </div>`;
+}
+
+/* ============================================================================
    VISITATORI
 ============================================================================ */
 Modals.register('add-vis', {
@@ -313,7 +363,16 @@ Modals.register('add-vis', {
     const fmDefault = S.facilityManager() || {};
     const referenti = State.utentiPiattaforma.map(u => ({ v: u.id, l: u.nomeCompleto + ' (' + S.etichettaRuolo(u.ruolo) + ')' }))
       .concat(State.dipendenti.filter(d => d.inEvidenza && d.stato === 'attivo').map(d => ({ v: d.id, l: d.nomeCompleto })));
-    return UI.alert('Il visitatore riceverà il <strong>codice di accesso</strong> via email. Il referente riceverà conferma.', 'info') + `
+    /* Il contenuto dipende dalla zona in cui finira' lo stallo: in anteprima
+       si usa il metodo di default (Zona V), lo stesso che usera' l'action. */
+    const anteprima = {
+      nome: f('nome', ''), azienda: f('azienda', ''), referenteId: f('referente', fmDefault.id),
+      data: f('data'), dataFine: null, oraInizio: f('da'), oraFine: f('a'),
+      stalloId: null, codiceAccesso: f('codice'),
+      codiceQR: 'QR-' + 'VIS' + String(State.visitatori.length + 41).padStart(4, '0') + '-' + String(f('data') || '').replace(/-/g, '')
+    };
+    const pv = S.passVisitatore(anteprima);
+    return UI.alert(`Zona visitatori con accesso <strong>${UI.esc(pv.metodoLabel)}</strong>: il pass sarà ${pv.tipo === 'codice' ? 'un <strong>codice numerico</strong>' : pv.tipo === 'qr' ? 'un <strong>QR Code</strong>' : 'una <strong>ricevuta</strong> senza codice'}. Il referente riceverà conferma.`, 'info') + `
       <div class="form-grid2">
         ${UI.campo('Nome visitatore', UI.input({ placeholder: 'Nome Cognome' }).replace('<input', '<input' + fld('nome')))}
         ${UI.campo('Email visitatore ✱', UI.input({ tipo: 'email', placeholder: 'email@azienda.com' }).replace('<input', '<input' + fld('email')))}
@@ -324,14 +383,12 @@ Modals.register('add-vis', {
         ${UI.campo('Referente interno', UI.select(referenti, f('referente', fmDefault.id)).replace('<select', '<select' + fld('referente')))}
         ${UI.campo('Email referente', UI.input({ tipo: 'email', valore: fmDefault.email || '' }).replace('<input', '<input' + fld('emailReferente')))}
       </div>
-      <div class="code-box"><span style="font-size:22px">🔑</span>
-        <div><div class="code-box-lbl">Codice di accesso (generato automaticamente)</div>
-        <div class="code-val">${UI.esc(f('codice'))}</div>
-        <div class="code-box-lbl" style="font-size:10px;margin-top:2px">Valido solo nella fascia oraria selezionata</div></div>
-        ${UI.btn('↻ Rigenera', { azione: 'rigenera-codice', stile: 'margin-left:auto' })}
-      </div>`;
+      ` + boxPass(anteprima, { generato: true, rigenera: true });
   },
-  footer: () => chiudi() + ok('Genera e Invia Codice', 'crea-visitatore')
+  footer: () => {
+    const t = S.tipoPassPerZona('V');
+    return chiudi() + ok(t === 'ricevuta' ? 'Crea e Invia Pass' : 'Genera e Invia Pass', 'crea-visitatore');
+  }
 });
 
 Modals.register('vis-det', {
@@ -359,7 +416,7 @@ Modals.register('vis-det', {
         UI.infoBox('Visitatore', UI.esc(v.nome)),
         UI.infoBox('Azienda', UI.esc(v.azienda)),
         UI.infoBox('Pass', UI.esc(v.passId), true),
-        UI.infoBox('Codice di accesso', UI.esc(v.codiceAccesso), true),
+        UI.infoBox('Contenuto pass', UI.esc(S.passVisitatore(v).tipoLabel)),
         UI.infoBox('Stallo', UI.esc(v.stalloId || '—')),
         UI.infoBox('Validità', `${UI.esc(v.oraInizio)} – ${UI.esc(v.oraFine)}`, true),
         UI.infoBox('Stato', UI.badge(lbl, col)),
@@ -370,6 +427,8 @@ Modals.register('vis-det', {
           { v: 'riassegna', l: 'Riassegna a stallo corretto in Zona V' },
           { v: 'revoca', l: 'Revoca il pass' }
         ], f('azione', 'notifica')).replace('<select', '<select' + fld('azione'))) : ''}
+      <div class="modal-sec-tit">Contenuto del pass</div>
+      ${boxPass(v, {})}
       <div class="modal-sec-tit">Periodo di validit\u00e0</div>
       ${UI.alert('Il periodo si sposta in <strong>entrambe le direzioni</strong>: si pu\u00f2 anticipare l\'inizio per un visitatore in arrivo prima del previsto, non solo posticipare la fine.', 'info')}
       <div class="form-grid2">
@@ -595,21 +654,38 @@ Modals.register('add-stallo', {
    PRENOTAZIONI — Nuova prenotazione FM
 ============================================================================ */
 Modals.register('add-bk', {
-  initForm: () => ({ dipendente: '', data: U.OGGI_ISO, tipo: 'ufficio', stallo: '', oraInizio: '09:00', oraFine: '18:00' }),
+  initForm: () => ({
+    dipendente: '', data: U.OGGI_ISO, tipo: 'ufficio', stallo: '',
+    oraInizio: '09:00', oraFine: '18:00',
+    /* in giornaliera resta vuoto e non viene mai letto */
+    turnoId: State.config.modalitaPrenotazione === 'turni' ? ((State.config.turni || [])[0] || {}).id || '' : ''
+  }),
   titolo: () => '📅 Nuova Prenotazione (FM)',
   body: () => {
     const dips = State.dipendenti.filter(d => d.stato === 'attivo' && d.inEvidenza).map(d => ({ v: d.id, l: d.nomeCompleto }));
     const dipId = f('dipendente', dips[0] ? dips[0].v : '');
     const data = f('data', U.OGGI_ISO);
+    /* In modalita' turni la disponibilita' dipende dal TURNO: proporre stalli
+       calcolati sull'intera giornata mostrerebbe come occupati posti liberi
+       nel turno scelto. */
+    const perTurni = State.config.modalitaPrenotazione === 'turni';
+    const turni = State.config.turni || [];
+    const turnoSel = perTurni ? f('turnoId', (turni[0] || {}).id || '') : null;
     const liberi = [{ v: '', l: 'Auto-assegna (stallo più vicino)' }]
-      .concat(S.stalliDisponibiliPer(dipId, data).slice(0, 25).map(c => ({ v: c, l: c + ' (libero)' })));
+      .concat(S.stalliDisponibiliPer(dipId, data, perTurni ? turnoSel : undefined).slice(0, 25).map(c => ({ v: c, l: c + ' (libero)' })));
+    const giaPrenotati = dipId ? S.prenotazioniGiorno(dipId, data) : [];
     const esistente = dipId ? S.prenotazione(dipId, data) : null;
     return `
-      ${esistente ? UI.alert(`⚠ Esiste già una prenotazione per questo giorno (${esistente.tipo === 'sw' ? 'Smart Working' : 'Stallo ' + UI.esc(esistente.stalloId)}). Confermando verrà sostituita.`, 'warn') : ''}
+      ${perTurni && giaPrenotati.length
+          ? UI.alert(`Turni già prenotati per questo giorno: <strong>${giaPrenotati.map(p => UI.esc((S.turno(p.turnoId) || {}).label || '—') + ' (' + UI.esc(p.stalloId || '—') + ')').join(', ')}</strong>. Il nuovo turno si <strong>aggiunge</strong>, non sostituisce · max ${S.maxTurniPerDipendente()}.`, 'info')
+          : esistente ? UI.alert(`⚠ Esiste già una prenotazione per questo giorno (${esistente.tipo === 'sw' ? 'Smart Working' : 'Stallo ' + UI.esc(esistente.stalloId)}). Confermando verrà sostituita.`, 'warn') : ''}
       <div class="form-grid2">
         ${UI.campo('Dipendente', UI.select(dips, dipId, { azione: 'refresh-modale' }).replace('<select', '<select' + fld('dipendente')))}
         ${UI.campo('Data', UI.input({ tipo: 'date', valore: data, azione: 'refresh-modale' }).replace('<input', '<input' + fld('data')))}
         ${UI.campo('Tipo', UI.select([{ v: 'ufficio', l: 'In ufficio' }, { v: 'sw', l: 'Smart Working' }], f('tipo'), { azione: 'refresh-modale' }).replace('<select', '<select' + fld('tipo')))}
+        ${perTurni && f('tipo', 'ufficio') === 'ufficio'
+          ? UI.campo('Turno ✱', UI.select(turni.map(t => ({ v: t.id, l: t.label + ' ' + t.inizio + '–' + t.fine })), turnoSel, { azione: 'refresh-modale' }).replace('<select', '<select' + fld('turnoId')))
+          : ''}
         ${f('tipo', 'ufficio') === 'ufficio' ? UI.campo('Stallo', UI.select(liberi, f('stallo')).replace('<select', '<select' + fld('stallo'))) : ''}
       </div>
       ${f('tipo', 'ufficio') === 'ufficio' ? `<div class="form-grid2">
@@ -624,6 +700,59 @@ Modals.register('add-bk', {
 /* ============================================================================
    CONFIG — Policy
 ============================================================================ */
+/* ============================================================================
+   FM — dettaglio di una prenotazione esistente
+   Fino al CODE-20 una cella gia' prenotata riapriva "Nuova prenotazione": il
+   FM che confermava non modificava nulla, ricreava. `prenota()` annulla
+   l'esistente, quindi partivano ID nuovo, stallo riassegnato e check-in perso,
+   e gli orari mostrati erano sempre 09:00-18:00 invece di quelli veri.
+============================================================================ */
+Modals.register('bk-det', {
+  size: 'modal-lg',
+  initForm: (c) => {
+    const p = S.prenotazioneById(c.prenotazioneId);
+    return { oraInizio: (p && p.oraInizio) || '09:00', oraFine: (p && p.oraFine) || '18:00' };
+  },
+  titolo: (c) => {
+    const p = S.prenotazioneById(c.prenotazioneId);
+    if (!p) return '📅 Prenotazione';
+    const d = S.dipendente(p.dipendenteId);
+    return '📅 ' + UI.esc(d ? d.nomeCompleto : 'Prenotazione') + ' \u00b7 ' + UI.esc(U.fmtMedium(U.fromISO(p.data)));
+  },
+  body: (c) => {
+    const p = S.prenotazioneById(c.prenotazioneId);
+    if (!p) return UI.alert('Prenotazione non trovata.', 'danger');
+    const st = p.stalloId ? S.stallo(p.stalloId) : null;
+    const t = p.turnoId ? S.turno(p.turnoId) : null;
+    const dentro = p.checkInTs && !p.checkOutTs;
+
+    return (p.tipo === 'sw' ? UI.alert('🏠 Smart Working: nessuno stallo impegnato.', 'info') : '')
+      + (dentro ? UI.alert('\u2713 Check-in registrato alle <strong>' + UI.esc(p.checkIn) + '</strong> \u00b7 sosta in corso da '
+          + UI.esc(U.fmtMinuti((S.durataPrenotazioneAttiva(p.id) || 0) * 60000)) + '.', 'success') : '')
+      + (p.checkOutTs ? UI.alert('Sosta conclusa: ' + UI.esc(p.checkIn) + ' \u2013 ' + UI.esc(p.checkOut) + '.', 'info') : '')
+      + UI.infoGrid([
+        UI.infoBox('Stallo', p.tipo === 'ufficio' ? UI.esc(p.stalloId || '\u2014') : 'Smart Working', true),
+        UI.infoBox('Zona', st ? UI.esc((S.zona(st.zonaId) || {}).nome || st.zonaId) : '\u2014'),
+        UI.infoBox(t ? 'Turno' : 'Creata da', t ? UI.esc(t.label + ' ' + t.inizio + '\u2013' + t.fine) : UI.esc(p.creataDa === 'fm' ? 'Facility Manager' : 'Dipendente')),
+        UI.infoBox('Metodo di accesso', st ? UI.esc(S.metodoDef(S.metodoAccessoPerStallo(p.stalloId)).label) : '\u2014')
+      ])
+      + (p.tipo === 'ufficio' ? '<div class="modal-sec-tit">Fascia oraria</div>'
+        + UI.alert('Si può <strong>anticipare</strong> o <strong>posticipare</strong> senza toccare lo stallo: la prenotazione resta la stessa, cambia solo la fascia.', 'info')
+        + '<div class="form-grid2">'
+        + UI.campo('Ora inizio', UI.input({ tipo: 'time', valore: f('oraInizio', '09:00'), focusKey: 'bkd-oi' }).replace('<input', '<input' + fld('oraInizio')))
+        + UI.campo('Ora fine', UI.input({ tipo: 'time', valore: f('oraFine', '18:00'), focusKey: 'bkd-of' }).replace('<input', '<input' + fld('oraFine')))
+        + '</div>'
+        + UI.btn('Aggiorna orari', { azione: 'fm-aggiorna-orari', params: { prenotazioneId: p.id }, variante: 'btn-primary', sm: false })
+        : '');
+  },
+  footer: (c) => {
+    const p = S.prenotazioneById(c.prenotazioneId);
+    return chiudi('Chiudi')
+      + (p ? UI.btn('Sostituisci prenotazione', { azione: 'fm-sostituisci-pren', params: { dipendenteId: p.dipendenteId, giornoIso: p.data }, sm: false }) : '')
+      + (p ? UI.btn('Cancella prenotazione', { azione: 'fm-cancella-pren', params: { prenotazioneId: p.id }, variante: 'btn-danger', sm: false }) : '');
+  }
+});
+
 Modals.register('policy', {
   initForm: () => Object.assign({}, State.config.prenotazioni),
   titolo: () => '⚙ Modifica Policy Prenotazioni',
@@ -635,6 +764,7 @@ Modals.register('policy', {
       ${UI.campo('Notifica sosta prolungata a (ore)', UI.input({ tipo: 'number', valore: f('notificaDurataOre'), min: 1, max: 24 }).replace('<input', '<input' + fld('notificaDurataOre')))}
       ${UI.campo('Durata max sosta EV (ore)', UI.input({ tipo: 'number', valore: f('durataMaxEvOre'), min: 1, max: 24 }).replace('<input', '<input' + fld('durataMaxEvOre')))}
       ${UI.campo('Blocco dopo N violazioni', UI.input({ tipo: 'number', valore: f('sogliaViolazioni'), min: 1, max: 10 }).replace('<input', '<input' + fld('sogliaViolazioni')))}
+      ${UI.campo('Max turni per dipendente <span class="muted">(modalità turni)</span>', UI.input({ tipo: 'number', valore: f('maxTurniPerDipendente', 3), min: 1, max: 5 }).replace('<input', '<input' + fld('maxTurniPerDipendente')))}
     </div>
     ${UI.alert('La finestra di prenotazione si riflette immediatamente nella Vista Dipendente.', 'info')}`,
   footer: () => chiudi() + ok('Salva', 'salva-policy')
@@ -711,16 +841,21 @@ Modals.register('emp-book', {
        disponibilita' dipende dal turno. */
     if (State.config.modalitaPrenotazione === 'turni' && tipo === 'ufficio') {
       const turnoSel = f('turnoId', '');
+      /* Un turno gia' prenotato da QUESTA persona non e' "pieno": e' suo. Senza
+         dirlo, il doppio turno sembrerebbe disponibile e verrebbe respinto solo
+         alla conferma. */
+      const miei = S.turniPrenotati(dip.id, c.giornoISO);
       const cards = (State.config.turni || []).map(t => {
         const liberi = S.stalliDisponibiliPer(dip.id, c.giornoISO, t.id).length;
-        const pieno = liberi === 0;
+        const gia = miei.indexOf(t.id) >= 0;
+        const pieno = liberi === 0 && !gia;
         /* Anche un turno pieno resta SELEZIONABILE: e' l'unico modo di
            arrivare alla proposta di lista d'attesa. Prima di CODE-17C era
            inerte, e la coda risultava irraggiungibile. */
         return `<div class="turno-card${turnoSel === t.id ? ' active' : ''}${pieno ? ' pieno' : ''}"${UI.act('emp-sel-turno', { turnoId: t.id })}>
           <div class="turno-card-hd">
             <div class="turno-card-lbl">${UI.esc(t.label)}</div>
-            ${UI.badge(pieno ? 'Esaurito' : 'Disponibile', pieno ? 'red' : 'green')}
+            ${gia ? UI.badge('Già prenotato', 'blue') : UI.badge(pieno ? 'Esaurito' : 'Disponibile', pieno ? 'red' : 'green')}
           </div>
           <div class="turno-card-ora mono">${UI.esc(t.inizio)} – ${UI.esc(t.fine)}</div>
           <div class="turno-card-posti">${liberi} post${liberi === 1 ? 'o' : 'i'} disponibil${liberi === 1 ? 'e' : 'i'}</div>

@@ -84,6 +84,10 @@ Dopo ogni blocco, esegui e riporta i risultati con ✅ ❌ ⚠️.
 - [ ] Click riga → modal con dati di QUELLA riga
 
 #### PRENOTAZIONI
+- [ ] Cella **prenotata** → dettaglio `bk-det` (non "Nuova prenotazione")
+- [ ] Modifica orari → stesso id, stesso stallo, check-in intatto
+- [ ] Cella **libera** → "Nuova prenotazione"
+- [ ] In modalità turni: campo Turno obbligatorio, badge impilati, una riga per dipendente
 - [ ] Griglia settimanale con settimana corrente
 - [ ] "›" → settimana successiva, date aggiornate
 - [ ] "‹" → settimana precedente
@@ -110,6 +114,8 @@ Dopo ogni blocco, esegui e riporta i risultati con ✅ ❌ ⚠️.
 #### VISITATORI
 - [ ] Tabella oggi si carica
 - [ ] Click riga → modal con dati di QUEL visitatore
+- [ ] Il **contenuto del pass** segue il metodo di Zona V: codice / QR / ricevuta
+- [ ] Un pass già emesso NON cambia tipo se si cambia il metodo della zona
 - [ ] Revoca → visitatore aggiornato in lista
 - [ ] Estendi → orario aggiornato
 - [ ] "+ Nuovo Pass" → modal, crea, appare in lista
@@ -142,6 +148,8 @@ Dopo ogni blocco, esegui e riporta i risultati con ✅ ❌ ⚠️.
 - [ ] "Modifica giorno" nel dettaglio → riapre la prenotazione → Smart Working → giorno ambra
 - [ ] Giorno di oggi: badge "OGGI" e bordo spesso se prenotato
 - [ ] Check-in coerente col metodo della zona; dopo il check-in timer + "⏹ Check-out"
+- [ ] Zona ANPR: dopo il check-in, testo automatico + fallback piccolo
+- [ ] Modalità turni: il giorno riapre la scelta turno, il 2° turno si aggiunge
 - [ ] Cancella prenotazione → giorno verde E stallo libero in mappa FM
 - [ ] "Succ ›" funziona se entro finestra; "Prec" disabilitato su settimana corrente
 - [ ] "🚨 Segnala" → modal, invia, appare in FM Segnalazioni
@@ -233,7 +241,7 @@ click → data-act → Actions.*  →  Store.emit()  →  render() della vista a
 |------|----------------|
 | `src/state.js` | AppState, Selectors, Actions, Store. **Unica fonte di verità** |
 | `src/ui.js` | Componenti riutilizzabili + event delegation |
-| `src/modals.js` | Registro dei 34 modali |
+| `src/modals.js` | Registro dei 36 modali |
 | `src/index.html` | Shell, routing, sidebar/topbar, view-activate |
 | `src/fm/*.js` | Una sezione FM per file |
 | `src/employee/index.js` | Vista Dipendente |
