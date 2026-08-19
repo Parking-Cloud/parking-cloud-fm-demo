@@ -68,6 +68,57 @@ Generati da PRNG con seed fisso `20260817`: **stabili a ogni reload**.
 
 ## STORICO MODIFICHE
 
+## [19/08/2026] — CODE-19b · Collegamento UI della MODIFICA E
+> Nessuna logica nuova: `state.js` era gia' corretto. Mancava il **click** che
+> portava alle informazioni. Un solo file di sezione piu' un modale.
+
+### Il problema, in una riga
+Tutti e tre i punti della MODIFICA E erano **B** nella diagnosi: dati completi,
+UI scollegata. Il denominatore comune era uno solo — **dalla UI non si poteva
+aprire una segnalazione risolta**, e tutto ciò che la MODIFICA E mostrava viveva
+in quel modale.
+
+### Modificato
+- `fm/segnalazioni.js` → storico: da "Risolte di recente" (ultime **6**, tre
+  colonne, righe **non cliccabili**) a **"Storico risolte"** con **tutte** le
+  risolte, righe cliccabili (`apri-seg`) e una colonna **Esito**.
+- Ogni riga dello storico mostra ora, sotto il titolo:
+  **Motivazione**, **Ripristino**, `↗ Collegata a #ID` e
+  `Segnalazioni collegate: #ID · stato` — tutti cliccabili.
+- Badge **"Utente sbloccato"** (verde) quando `azione === 'sblocco_utente'` o
+  `risoltoConMotivo` è valorizzato; **"Risolta"** (grigio) altrimenti.
+- `fm/segnalazioni.js` → lista attiva: `↗ Collegata a #ID` sotto il titolo,
+  cliccabile se l'originale esiste.
+- `modals.js`: nuovo modale **`seg-collegata`** di conferma, pre-compilato con
+  stallo, tipo e nota `Collegata a segnalazione #ID`.
+- `apri-collegata` **non crea più la segnalazione al click**: apre il modale.
+  La creazione avviene su `crea-seg-collegata`. Un click esplorativo non deve
+  già aver scritto in `AppState`.
+### Non modificato
+`state.js` è rimasto invariato. La diagnosi chiedeva di correggere
+`sbloccaUtente()` se non scriveva `risoltoConMotivo`: **lo scriveva già**
+correttamente — l'action si chiama `sbloccaDipendente()`, e imposta `stato`,
+`risoltoIl`, `risoltoConMotivo`, `risoltoConDurata` e `azione`.
+### Precisazione sulla diagnosi
+La premessa del PUNTO 1 ("lo storico non mostra quelle risolte tramite sblocco")
+non era esatta: **comparivano già**, in cima, perché ordinate per `risoltaIlTs`.
+Mancavano il badge, la motivazione e — soprattutto — il click.
+### Perché era sfuggito ai test di CODE-19
+I TEST E ed F aprivano il modale **programmaticamente** con
+`M.open('seg', {segId})`: verificavano il contenuto, mai la raggiungibilità.
+Ora ogni test parte da un **click su una riga reale**.
+### Flussi verificati
+- **TEST A 12/12 ✅** — checklist completa, nessun downgrade
+- **TEST B 6/6** — storico con **18 righe per 18 risolte** (non più 6), sblocco
+  in cima con badge verde, Motivazione e Ripristino leggibili nella riga, le
+  altre risolte con badge grigio
+- **TEST C 6/6** — riga cliccabile → modale con la sezione sblocco → "Apri
+  segnalazione collegata" → **modale pre-compilato senza creare nulla** →
+  conferma → `SEG-0025` in lista attiva. "Annulla" non crea nulla.
+- **TEST D 5/5** — `↗ Collegata a #ID` nella lista attiva e nello storico,
+  entrambi i link aprono la segnalazione giusta, e **il link interno non fa
+  scattare il click della riga** che lo contiene
+
 ## [19/08/2026] — CODE-19 · Ordine, paginazione, export Excel, check-in, stato pass
 
 ### A — Analytics dopo Segnalazioni

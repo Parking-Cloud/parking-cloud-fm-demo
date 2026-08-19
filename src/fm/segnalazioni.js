@@ -40,6 +40,9 @@ global.PC.Sezioni.segnalazioni = {
             segnalante ? 'Segnalato da ' + UI.esc(segnalante.nomeCompleto) : null,
             sg.targa ? '<span class="mono">' + UI.esc(sg.targa) + '</span>' : null
           ].filter(Boolean).join(' · ')
+            /* Il rimando all'originale sta sotto il titolo: se una segnalazione
+               e' il seguito di un'altra, e' la prima cosa da sapere leggendola. */
+            + (sg.collegataA ? `<div class="seg-link"${S.segnalazione(sg.collegataA) ? UI.act('apri-seg', { segId: sg.collegataA }) : ''}>\u2197 Collegata a #${UI.esc(sg.collegataA)}</div>` : '')
             + `<div style="font-size:10px;opacity:.7;margin-top:3px">aperta da ${S.durataSegnalazione(sg)}${sg.note.length ? ' · ' + sg.note.length + ' aggiornament' + (sg.note.length === 1 ? 'o' : 'i') : ''}</div>`,
           meta: [
             UI.badge(urgente ? 'Urgente' : inGestione ? 'In gestione' : 'Aperta', urgente ? 'red' : inGestione ? 'amber' : 'blue'),
@@ -66,20 +69,35 @@ global.PC.Sezioni.segnalazioni = {
       })
     });
 
-    /* storico risolte */
+    /* Storico: TUTTE le risolte, non solo le ultime sei. Ogni riga e'
+       cliccabile — senza, il dettaglio di una segnalazione chiusa (motivazione
+       dello sblocco, collegamenti) non sarebbe raggiungibile dalla UI. */
     const risolte = State.segnalazioni.filter(s => s.stato === 'risolta')
-      .sort((a, b) => b.risoltaIlTs - a.risoltaIlTs).slice(0, 6);
+      .sort((a, b) => (b.risoltaIlTs || 0) - (a.risoltaIlTs || 0));
     const cardStorico = UI.card({
-      titolo: 'Risolte di recente',
+      titolo: 'Storico risolte',
+      sub: `${risolte.length} chiuse`,
       stile: 'margin-top:14px',
       body: UI.tabella({
-        head: ['Segnalazione', 'Stallo', 'Chiusa'],
-        scroll: false,
-        rows: risolte.map(s => `<tr>
-          <td>${D.TIPO_SEGNALAZIONE[s.tipo].icona} ${UI.esc(D.TIPO_SEGNALAZIONE[s.tipo].label)}</td>
-          <td class="mono">${UI.esc(s.stalloId || '—')}</td>
-          <td class="muted" style="font-size:11.5px">${UI.esc(new Date(s.risoltaIlTs).toLocaleDateString('it-IT', { day: '2-digit', month: 'short' }))}</td>
-        </tr>`),
+        head: ['Segnalazione', 'Stallo', 'Esito', 'Chiusa'],
+        scroll: true,
+        rows: risolte.map(s => {
+          const sbloccata = s.azione === 'sblocco_utente' || !!s.risoltoConMotivo;
+          const collegate = S.segnalazioniCollegate(s.id);
+          const sotto = []
+            .concat(s.risoltoConMotivo ? [`<div class="seg-sub">Motivazione: ${UI.esc(s.risoltoConMotivo)}</div>`] : [])
+            .concat(s.risoltoConDurata ? [`<div class="seg-sub">Ripristino: ${UI.esc(s.risoltoConDurata)}</div>`] : [])
+            .concat(s.collegataA ? [`<div class="seg-sub"><span class="seg-link"${S.segnalazione(s.collegataA) ? UI.act('apri-seg', { segId: s.collegataA }) : ''}>\u2197 Collegata a #${UI.esc(s.collegataA)}</span></div>`] : [])
+            .concat(collegate.length ? [`<div class="seg-sub">Segnalazioni collegate: `
+              + collegate.map(c => `<span class="seg-link"${UI.act('apri-seg', { segId: c.id })}>#${UI.esc(c.id)}</span> \u00b7 ${UI.esc(c.stato)}`).join(' \u2014 ')
+              + '</div>'] : []);
+          return UI.riga([
+            `<div>${D.TIPO_SEGNALAZIONE[s.tipo].icona} ${UI.esc(D.TIPO_SEGNALAZIONE[s.tipo].label)}</div>${sotto.join('')}`,
+            `<span class="mono">${UI.esc(s.stalloId || '\u2014')}</span>`,
+            sbloccata ? UI.badge('Utente sbloccato', 'green') : UI.badge('Risolta', 'gray'),
+            `<span class="muted" style="font-size:11.5px">${s.risoltaIlTs ? UI.esc(new Date(s.risoltaIlTs).toLocaleDateString('it-IT', { day: '2-digit', month: 'short' })) : '\u2014'}</span>`
+          ], { azione: 'apri-seg', params: { segId: s.id } });
+        }),
         vuoto: 'Nessuna segnalazione risolta.'
       })
     });
@@ -108,16 +126,22 @@ UI.on('conferma-seg', d => {
 
 UI.on('apri-sblocco', d => Modals.open('sblocco', { dipendenteId: d.dipendenteId }));
 
-UI.on('apri-collegata', d => {
+UI.on('apri-collegata', d => Modals.open('seg-collegata', { segId: d.segId }));
+
+UI.on('crea-seg-collegata', d => {
+  Modals._collect();
   const orig = S.segnalazione(d.segId);
   if (!orig) return;
   const nuova = A.creaSegnalazione({
-    tipo: orig.tipo, stalloId: orig.stalloId, segnalanteId: orig.segnalanteId,
-    descrizione: `Collegata a segnalazione #${orig.id}`,
-    targa: orig.targa, collegataA: orig.id
+    tipo: Modals.form.tipo || orig.tipo,
+    stalloId: orig.stalloId,
+    segnalanteId: orig.segnalanteId,
+    descrizione: (Modals.form.note || '').trim() || `Collegata a segnalazione #${orig.id}`,
+    targa: orig.targa,
+    collegataA: orig.id
   });
-  Modals.open('seg', { segId: nuova.id });
-  UI.toast(`\u{1F6A8} Nuova segnalazione ${nuova.id} collegata a ${orig.id}`);
+  Modals.close();
+  UI.toast(`\u{1F6A8} ${nuova.id} creata \u00b7 collegata a ${orig.id}`);
 });
 
 UI.on('conferma-sblocco', d => {

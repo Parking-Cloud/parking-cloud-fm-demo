@@ -453,6 +453,30 @@ Modals.register('seg', {
 /* ============================================================================
    HARDWARE
 ============================================================================ */
+/** Nuova segnalazione come SEGUITO di una chiusa. Si conferma prima di
+    creare: cliccare "Apri segnalazione collegata" non deve gia' aver scritto
+    in AppState, altrimenti un click esplorativo sporca lo storico. */
+Modals.register('seg-collegata', {
+  size: 'modal-lg',
+  initForm: (c) => {
+    const o = S.segnalazione(c.segId) || {};
+    return { tipo: o.tipo || 'altro', note: 'Collegata a segnalazione #' + (o.id || '') };
+  },
+  titolo: () => '\U0001F6A8 Nuova segnalazione collegata',
+  body: (c) => {
+    const o = S.segnalazione(c.segId);
+    if (!o) return UI.alert('Segnalazione di origine non trovata.', 'danger');
+    return UI.alert(`Seguito di <strong>${UI.esc(o.id)}</strong> \u00b7 ${UI.esc(o.titolo)}`, 'info')
+      + UI.infoGrid([
+        UI.infoBox('Stallo', UI.esc(o.stalloId || '\u2014')),
+        UI.infoBox('Segnalante', o.segnalanteId ? UI.esc(S.nomePersona(o.segnalanteId)) : '<span class="muted">Rilevazione automatica</span>')
+      ])
+      + UI.campo('Tipo', UI.select(Object.keys(D.TIPO_SEGNALAZIONE).map(k => ({ v: k, l: D.TIPO_SEGNALAZIONE[k].label })), f('tipo')).replace('<select', '<select' + fld('tipo')))
+      + UI.campo('Note', `<textarea class="form-textarea"${fld('note')}>${UI.esc(f('note', ''))}</textarea>`);
+  },
+  footer: (c) => chiudi() + ok('Crea segnalazione', 'crea-seg-collegata', { segId: c.segId })
+});
+
 Modals.register('hw', {
   titolo: (c) => { const h = S.dispositivo(c.hardwareId); return `⚡ ${UI.esc(h ? h.nome : 'Dispositivo')}`; },
   body: (c) => {
