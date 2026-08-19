@@ -1091,10 +1091,15 @@ Zero errori in console.
 
 ## BUG NOTI
 
-Nessun bug funzionale aperto (N05 risolto in CODE-14, N06 in CODE-10). Elementi da tenere presenti:
+Nessun bug funzionale aperto (N05 risolto in CODE-14, N06 in CODE-10).
+Le voci **P0x** non sono bug: sono scelte valide in demo che **cambiano in
+produzione**, e vanno riportate nel documento funzionale.
+
+Elementi da tenere presenti:
 
 | # | Tipo | Descrizione |
 |---|------|-------------|
+| P01 | **Delta demo → produzione** | Il campo `Metodo` del log accessi è **derivato dalla zona** (`metodoAccessoPerStallo()`), quindi cambiare il varco riscrive la lettura dello storico. In demo è voluto: rende osservabile l'effetto della configurazione. **In produzione il metodo effettivamente usato va registrato sul record di accesso al momento del passaggio** e mai ricalcolato: un log di sicurezza deve dire cosa è successo, non cosa succederebbe oggi. Da riportare nel documento funzionale (Federico, Niccolò). |
 | N01 | Debito lessicale | In `state.js` le zone A/B/C hanno `colore: 'gold'`, residuo della palette precedente. È mappato a `var(--blue)` e **non produce alcun oro a schermo**. Rinominarlo richiede di toccare `dashboard.js → coloreBarra()`, dove il valore fa cadere la mini-mappa sul colore a semaforo. |
 | N02 | Limite noto | La demo è in-memory: ogni reload riparte dal seed. Nessuna persistenza (voluto). |
 | N03 | Limite noto | `dist/parking_cloud_demo.html` dipende da Google Fonts per Nunito. Offline usa il fallback Trebuchet MS. |
